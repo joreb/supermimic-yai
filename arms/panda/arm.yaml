@@ -1,0 +1,11 @@
+mjcf: ${MENAGERIE_DIR}/franka_emika_panda/panda.xml
+arm_joints: [joint1, joint2, joint3, joint4, joint5, joint6, joint7]
+arm_actuators: [actuator1, actuator2, actuator3, actuator4, actuator5, actuator6, actuator7]
+gripper_actuator: actuator8
+gripper_open_ctrl: 255
+gripper_closed_ctrl: 0
+ee_body: hand
+ee_offset: [0, 0, 0.1034]
+max_grip_width: 0.08
+home_qpos: [0, 0, 0, -1.57079, 0, 1.57079, -0.7853]
+base_pose: [0, 0, 0, 1, 0, 0, 0]
