@@ -16,7 +16,7 @@ APPROACH_SPEED = 0.05   # m/s, grasp descent / lift
 INSERT_SPEED = 0.01     # m/s
 PRESS_SPEED = 0.005     # m/s
 DAMP = 1e-3
-LEAD = 0.003            # m, max distance the commanded point may lead the measured one (bounds contact force)
+LEAD = 0.003
 IK = {"damping": DAMP}
 PLATEAU = (0.5, 5e-4)   # window [s], minimum improvement [m]
 
@@ -288,9 +288,11 @@ def _run(env, tok, held, run):
         z0, tol = _part(env, held)[2], env.product.tol_pos
 
         def check():
+            if _at(env, held, tgt, rot=False) and z0 - _part(env, held)[2] >= tok.depth - tol:
+                return True  # arrival wins over residual contact force
             if contact_force(env, held) > tok.max_force:
                 raise _Fail("force limit")
-            return _at(env, held, tgt, rot=False) and z0 - _part(env, held)[2] >= tok.depth - tol
+            return False
 
         _descent(run, env, thing, held, tok.target, z0, check)
         if not check():

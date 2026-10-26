@@ -13,3 +13,4 @@ wheels/
 # Private planning docs (spec, plans)
 docs/
 .cache/
+MUJOCO_LOG.TXT
