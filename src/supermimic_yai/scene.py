@@ -38,6 +38,8 @@ def build_scene(arm: ArmSpec, product: Product, ctx: SimContext,
         spec.delete(k)
     spec.option.timestep = 0.002
     spec.option.noslip_iterations = 2
+    for b in spec.bodies:  # position actuators sag under gravity otherwise; parts are added after, so unaffected
+        b.gravcomp = 1.0
     world = spec.worldbody
 
     table = world.add_geom(name="table", type=mujoco.mjtGeom.mjGEOM_PLANE, size=[2, 2, 0.1])
