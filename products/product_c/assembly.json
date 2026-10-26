@@ -1,0 +1,125 @@
+{
+  "name": "product_c",
+  "units": "m",
+  "tolerance": {
+    "pos": 0.005,
+    "rot_deg": 5.0
+  },
+  "parts": {
+    "base": {
+      "mesh": "parts/base.stl",
+      "mass": 0.0722,
+      "fixed": true,
+      "start_pose": [
+        0.5,
+        0.0,
+        0.005,
+        1,
+        0,
+        0,
+        0
+      ],
+      "final_pose": [
+        0.5,
+        0.0,
+        0.005,
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    "peg": {
+      "mesh": "parts/peg.stl",
+      "mass": 0.0226,
+      "fixed": false,
+      "start_pose": [
+        0.5,
+        -0.22,
+        0.03,
+        1,
+        0,
+        0,
+        0
+      ],
+      "final_pose": [
+        0.5,
+        0.0,
+        0.03,
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    "ring_l": {
+      "mesh": "parts/ring_l.stl",
+      "mass": 0.0293,
+      "fixed": false,
+      "start_pose": [
+        0.38,
+        0.22,
+        0.005,
+        1,
+        0,
+        0,
+        0
+      ],
+      "final_pose": [
+        0.5,
+        0.0,
+        0.015,
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    "ring_m": {
+      "mesh": "parts/ring_m.stl",
+      "mass": 0.019,
+      "fixed": false,
+      "start_pose": [
+        0.5,
+        0.22,
+        0.005,
+        1,
+        0,
+        0,
+        0
+      ],
+      "final_pose": [
+        0.5,
+        0.0,
+        0.025,
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    "ring_s": {
+      "mesh": "parts/ring_s.stl",
+      "mass": 0.0105,
+      "fixed": false,
+      "start_pose": [
+        0.62,
+        0.22,
+        0.005,
+        1,
+        0,
+        0,
+        0
+      ],
+      "final_pose": [
+        0.5,
+        0.0,
+        0.035,
+        1,
+        0,
+        0,
+        0
+      ]
+    }
+  }
+}

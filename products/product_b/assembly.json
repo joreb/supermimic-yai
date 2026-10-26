@@ -1,0 +1,102 @@
+{
+  "name": "product_b",
+  "units": "m",
+  "tolerance": {
+    "pos": 0.005,
+    "rot_deg": 5.0
+  },
+  "parts": {
+    "base": {
+      "mesh": "parts/base.stl",
+      "mass": 0.1058,
+      "fixed": true,
+      "start_pose": [
+        0.5,
+        0.0,
+        0.005,
+        1,
+        0,
+        0,
+        0
+      ],
+      "final_pose": [
+        0.5,
+        0.0,
+        0.005,
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    "block": {
+      "mesh": "parts/block.stl",
+      "mass": 0.0347,
+      "fixed": false,
+      "start_pose": [
+        0.4,
+        0.22,
+        0.01,
+        1,
+        0,
+        0,
+        0
+      ],
+      "final_pose": [
+        0.53,
+        0.03,
+        0.015,
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    "peg": {
+      "mesh": "parts/peg.stl",
+      "mass": 0.0188,
+      "fixed": false,
+      "start_pose": [
+        0.5,
+        -0.22,
+        0.025,
+        1,
+        0,
+        0,
+        0
+      ],
+      "final_pose": [
+        0.5,
+        0.0,
+        0.025,
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    "cap": {
+      "mesh": "parts/cap.stl",
+      "mass": 0.0059,
+      "fixed": false,
+      "start_pose": [
+        0.6,
+        0.22,
+        0.0075,
+        1,
+        0,
+        0,
+        0
+      ],
+      "final_pose": [
+        0.5,
+        0.0,
+        0.0175,
+        1,
+        0,
+        0,
+        0
+      ]
+    }
+  }
+}
