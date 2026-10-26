@@ -82,3 +82,20 @@ def test_relative_paths(monkeypatch):
     p = load_product(Path("products/product_a"))
     model, idx = build_scene(ARM, p, nominal_context(p, 7))
     assert set(idx.part_body) == set(p.parts)
+
+
+def test_contact_is_stiff():
+    p = prod("a")
+    model, idx = build_scene(ARM, p, nominal_context(p, 7), CACHE)
+    d = mujoco.MjData(model)
+    d.qpos[idx.arm_qpos_adr] = ARM.home_qpos
+    d.ctrl[idx.arm_ctrl_idx] = ARM.home_qpos
+    d.ctrl[idx.gripper_ctrl_idx] = ARM.gripper_open_ctrl
+    b = idx.part_body["peg1"]
+    deepest = 0.0
+    for i in range(int(1 / model.opt.timestep)):
+        d.xfrc_applied[b, 2] = -20.0
+        mujoco.mj_step(model, d)
+        if i > 50 and d.ncon:  # skip the first 0.1 s impact transient of the suddenly applied load
+            deepest = max(deepest, -min(c.dist for c in d.contact[:d.ncon]))
+    assert deepest < 0.002 and np.isfinite(d.qacc).all()

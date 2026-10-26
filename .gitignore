@@ -14,3 +14,4 @@ wheels/
 docs/
 .cache/
 MUJOCO_LOG.TXT
+out/

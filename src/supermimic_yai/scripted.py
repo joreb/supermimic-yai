@@ -16,7 +16,7 @@ APPROACH_SPEED = 0.05   # m/s, grasp descent / lift
 INSERT_SPEED = 0.01     # m/s
 PRESS_SPEED = 0.005     # m/s
 DAMP = 1e-3
-LEAD = 0.003
+LEAD = 0.003            # max distance the commanded point may lead the measured one (bounds contact force)
 IK = {"damping": DAMP}
 PLATEAU = (0.5, 5e-4)   # window [s], minimum improvement [m]
 

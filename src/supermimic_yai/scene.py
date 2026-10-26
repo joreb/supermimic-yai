@@ -23,6 +23,11 @@ class SceneIndex:
     finger_geoms: set[int]
 
 
+# Stiff contacts: default soft constraints scale with effective mass, so light parts sink under load.
+SOLREF = (0.004, 1.0)
+SOLIMP = (0.95, 0.99, 0.001, 0.5, 2)
+
+
 def _start_pose(pose, noise):
     dx, dy, dyaw = noise
     q = np.empty(4)
@@ -44,6 +49,7 @@ def build_scene(arm: ArmSpec, product: Product, ctx: SimContext,
 
     table = world.add_geom(name="table", type=mujoco.mjtGeom.mjGEOM_PLANE, size=[2, 2, 0.1])
     table.friction[0] = ctx.friction
+    table.solref, table.solimp = SOLREF, SOLIMP
 
     for name, part in product.parts.items():
         pieces = decompose(part.mesh, cache_dir)
@@ -65,6 +71,7 @@ def build_scene(arm: ArmSpec, product: Product, ctx: SimContext,
             g = body.add_geom(type=mujoco.mjtGeom.mjGEOM_MESH, meshname=f"col:{name}:{i}",
                               density=density, group=3)
             g.friction[0] = ctx.friction
+            g.solref, g.solimp = SOLREF, SOLIMP
 
     model = spec.compile()
 
