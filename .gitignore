@@ -12,3 +12,4 @@ wheels/
 
 # Private planning docs (spec, plans)
 docs/
+.cache/
