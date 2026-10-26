@@ -75,3 +75,10 @@ def test_context_applied():
     model, idx = build_scene(ARM, p, ctx, CACHE)
     geoms = [g for b in idx.part_body.values() for g in np.flatnonzero(model.geom_bodyid == b)]
     assert geoms and np.all(model.geom_friction[geoms, 0] == 0.5)
+
+
+def test_relative_paths(monkeypatch):
+    monkeypatch.chdir(ROOT)
+    p = load_product(Path("products/product_a"))
+    model, idx = build_scene(ARM, p, nominal_context(p, 7))
+    assert set(idx.part_body) == set(p.parts)

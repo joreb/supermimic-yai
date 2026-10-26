@@ -55,11 +55,11 @@ def build_scene(arm: ArmSpec, product: Product, ctx: SimContext,
             body = world.add_body(name=f"part:{name}", pos=pos, quat=quat)
             body.add_freejoint(name=f"free:{name}")
 
-        spec.add_mesh(name=f"visual:{name}", file=str(part.mesh))
+        spec.add_mesh(name=f"visual:{name}", file=str(part.mesh.resolve()))
         body.add_geom(type=mujoco.mjtGeom.mjGEOM_MESH, meshname=f"visual:{name}",
                       contype=0, conaffinity=0, group=2, density=0).friction[0] = ctx.friction
         for i, p in enumerate(pieces):
-            spec.add_mesh(name=f"col:{name}:{i}", file=str(p))
+            spec.add_mesh(name=f"col:{name}:{i}", file=str(p.resolve()))
             g = body.add_geom(type=mujoco.mjtGeom.mjGEOM_MESH, meshname=f"col:{name}:{i}",
                               density=density, group=3)
             g.friction[0] = ctx.friction
