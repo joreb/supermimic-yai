@@ -42,7 +42,7 @@ def main(argv=None) -> int:
     log = execute(env, recipe, record=a.video is not None)
     for line, res in zip(lines, log.results):
         print(f"{line}: {'ok' if res.ok else 'FAILED (' + res.reason + ')'} [{res.sim_time:.2f} s]")
-    report = score(product, env._obs()["part_poses"])
+    report = score(product, env.obs()["part_poses"])
     for s in report.parts:
         print(f"{s.part}: pos_err {s.pos_err * 1000:.1f} mm, rot_err {s.rot_err_deg:.1f} deg, {'ok' if s.ok else 'FAIL'}")
     if a.video is not None:

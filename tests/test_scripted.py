@@ -23,18 +23,18 @@ def fresh():
 
 def peg_grasp(env, part="peg1"):
     """Grasp pose in the part frame: 1 cm above centre, gripper pointing down."""
-    T = np.linalg.inv(_mat(env._obs()["part_poses"][part])) @ _mat(np.concatenate([[0, 0, 0], _down(env)]))
+    T = np.linalg.inv(_mat(env.obs()["part_poses"][part])) @ _mat(np.concatenate([[0, 0, 0], _down(env)]))
     T[:3, 3] = [0, 0, 0.01]
     return tuple(_pose(T))
 
 
 def test_move_to_reaches():
     env = fresh()
-    ee = env._obs()["ee_pose"]
+    ee = env.obs()["ee_pose"]
     tgt = np.concatenate([ee[:3] + [0.05, 0.05, -0.05], ee[3:]])
     res, _ = run_token(env, MoveTo(tuple(tgt)), None)
     assert res.ok, res.reason
-    assert np.linalg.norm(env._obs()["ee_pose"][:3] - tgt[:3]) < 0.003
+    assert np.linalg.norm(env.obs()["ee_pose"][:3] - tgt[:3]) < 0.003
 
 
 def test_unreachable_fails_fast():
@@ -45,15 +45,15 @@ def test_unreachable_fails_fast():
 
 def test_grasp_lifts_peg():
     env = fresh()
-    z0 = env._obs()["part_poses"]["peg1"][2]
+    z0 = env.obs()["part_poses"]["peg1"][2]
     res, held = run_token(env, Grasp("peg1", peg_grasp(env)), None)
     assert res.ok, res.reason
-    assert held == "peg1" and env._obs()["part_poses"]["peg1"][2] > z0 + 0.015
+    assert held == "peg1" and env.obs()["part_poses"]["peg1"][2] > z0 + 0.015
 
 
 def test_unstable_reported(monkeypatch):
     env = fresh()
-    monkeypatch.setattr(env, "step", lambda a: (env._obs(), 0.0, True, False, {"unstable": True}))
+    monkeypatch.setattr(env, "step", lambda a: (env.obs(), 0.0, True, False, {"unstable": True}))
     log = execute(env, Recipe("product_a", (MoveTo((0.4, 0, 0.4, *_down(env))),)))
     assert log.results[-1].reason == "simulation unstable" and log.stopped_at == 0
 
@@ -90,8 +90,8 @@ def test_insert_jam_reports_force_limit():
 
 def test_press_blocked_reports_force_limit_or_misaligned():
     env = fresh()
-    ee = env._obs()["ee_pose"]
-    top = env._obs()["part_poses"]["peg2"]
+    ee = env.obs()["ee_pose"]
+    top = env.obs()["part_poses"]["peg2"]
     run_token(env, MoveTo((top[0], top[1], 0.1, *ee[3:])), None)
     res, _ = run_token(env, Press("peg2", (0, 0, -1), 5.0), None)  # peg2 rests on the table
     assert not res.ok and res.reason in ("force limit", "misaligned")

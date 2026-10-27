@@ -109,3 +109,22 @@ def build_scene(arm: ArmSpec, product: Product, ctx: SimContext,
         finger_geoms={g for g in range(model.ngeom) if model.geom_bodyid[g] in finger_bodies},
     )
     return model, index
+
+
+def apply_context(model: mujoco.MjModel, index: SceneIndex, ctx: SimContext, base_model: mujoco.MjModel) -> None:
+    """Apply ctx to a model built with the nominal context, in place. base_model is an untouched copy of it."""
+    m = model
+    m.geom_friction[mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "table"), 0] = ctx.friction
+    for name, b in index.part_body.items():
+        m.geom_friction[m.geom_bodyid == b, 0] = ctx.friction
+        m.body_mass[b] = base_model.body_mass[b] * ctx.mass_scale[name]
+        m.body_inertia[b] = base_model.body_inertia[b] * ctx.mass_scale[name]
+    for name, adr in index.part_qpos_adr.items():
+        dx, dy, dyaw = ctx.start_pose_noise[name]
+        q = base_model.qpos0[adr:adr + 7]
+        pos, quat = _start_pose(np.concatenate([q[:3], q[3:]]), (dx, dy, dyaw))
+        m.qpos0[adr:adr + 3], m.qpos0[adr + 3:adr + 7] = pos, quat
+        m.qpos_spring[adr:adr + 3], m.qpos_spring[adr + 3:adr + 7] = pos, quat
+        b = index.part_body[name]
+        m.body_pos[b], m.body_quat[b] = pos, quat
+    mujoco.mj_setConst(m, mujoco.MjData(m))  # recompute mass-derived constants (invweight0, dof_M0, subtreemass...)

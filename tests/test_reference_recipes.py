@@ -19,7 +19,7 @@ def run_seed(env, recipe, seed):
     """Returns (success, detail) for one sample_context seed."""
     env.reset(seed=seed)
     log = execute(env, recipe)
-    report = score(env.product, env._obs()["part_poses"])
+    report = score(env.product, env.obs()["part_poses"])
     if log.stopped_at is not None:
         step = describe(recipe)[log.stopped_at]
         return False, f"step {log.stopped_at} ({step}): {log.results[-1].reason}"
