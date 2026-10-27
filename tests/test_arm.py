@@ -47,6 +47,7 @@ def _edit(tmp_path, old, new):
     ("base_pose: [0, 0, 0, 1, 0, 0, 0]", "base_pose: [0, 0, 1, 1, 0, 0, 0]", "base_pose not supported"),
     ("ee_offset: [0, 0, 0.1034]", "ee_offset: 5", "bad arm.yaml"),
     ("gripper_actuator: actuator8\n", "", "bad arm.yaml"),
+    ("ee_offset: [0, 0, 0.1034]", "ee_offset: [0, 0, 0.1034", "bad arm.yaml"),
 ])
 def test_bad_arm_yaml_raises_arm_error(tmp_path, old, new, match):
     with pytest.raises(ArmError, match=match):

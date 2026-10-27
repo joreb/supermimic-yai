@@ -30,7 +30,7 @@ def load_arm(arm_dir: Path) -> ArmSpec:
     arm_dir = Path(arm_dir)
     try:
         return _load(arm_dir)
-    except (KeyError, TypeError, ValueError) as e:
+    except (KeyError, TypeError, ValueError, yaml.YAMLError) as e:
         if isinstance(e, ArmError):
             raise
         raise ArmError(f"{arm_dir}: bad arm.yaml ({e!r})") from None
