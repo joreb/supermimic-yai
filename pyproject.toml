@@ -12,6 +12,9 @@ dependencies = [
     "imageio", "imageio-ffmpeg", "pyyaml", "numpy", "python-fcl", "scipy",
 ]
 
+[project.scripts]
+supermimic = "supermimic_yai.cli:main"
+
 [build-system]
 requires = ["uv_build>=0.13.5,<0.14.0"]
 build-backend = "uv_build"

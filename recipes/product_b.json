@@ -1,0 +1,176 @@
+{
+ "product": "product_b",
+ "steps": [
+  {
+   "token": "MOVE_TO",
+   "pose": [
+    0.5,
+    -0.1,
+    0.3,
+    0,
+    0.38268,
+    0.92388,
+    0
+   ]
+  },
+  {
+   "token": "MOVE_TO",
+   "pose": [
+    0.5,
+    -0.22,
+    0.12,
+    0,
+    0,
+    1,
+    0
+   ]
+  },
+  {
+   "token": "GRASP",
+   "part": "peg",
+   "grasp_pose": [
+    0,
+    0,
+    0.015,
+    0,
+    0,
+    1,
+    0
+   ]
+  },
+  {
+   "token": "RETREAT",
+   "distance": 0.06
+  },
+  {
+   "token": "MOVE_ABOVE",
+   "target": "final:peg",
+   "offset": 0.06
+  },
+  {
+   "token": "ALIGN",
+   "part": "peg",
+   "target": "final:peg"
+  },
+  {
+   "token": "INSERT",
+   "part": "peg",
+   "target": "final:peg",
+   "depth": 0.06,
+   "max_force": 20
+  },
+  {
+   "token": "RELEASE"
+  },
+  {
+   "token": "RETREAT",
+   "distance": 0.1
+  },
+  {
+   "token": "MOVE_TO",
+   "pose": [
+    0.4,
+    0.22,
+    0.12,
+    0,
+    0,
+    1,
+    0
+   ]
+  },
+  {
+   "token": "GRASP",
+   "part": "block",
+   "grasp_pose": [
+    0,
+    0,
+    0.005,
+    0,
+    0,
+    1,
+    0
+   ]
+  },
+  {
+   "token": "RETREAT",
+   "distance": 0.06
+  },
+  {
+   "token": "MOVE_ABOVE",
+   "target": "final:block",
+   "offset": 0.03
+  },
+  {
+   "token": "ALIGN",
+   "part": "block",
+   "target": "final:block"
+  },
+  {
+   "token": "INSERT",
+   "part": "block",
+   "target": "final:block",
+   "depth": 0.03,
+   "max_force": 20
+  },
+  {
+   "token": "RELEASE"
+  },
+  {
+   "token": "RETREAT",
+   "distance": 0.1
+  },
+  {
+   "token": "MOVE_TO",
+   "pose": [
+    0.6,
+    0.22,
+    0.12,
+    0,
+    0,
+    1,
+    0
+   ]
+  },
+  {
+   "token": "GRASP",
+   "part": "cap",
+   "grasp_pose": [
+    0,
+    0,
+    0.009,
+    0,
+    0,
+    1,
+    0
+   ]
+  },
+  {
+   "token": "RETREAT",
+   "distance": 0.06
+  },
+  {
+   "token": "MOVE_ABOVE",
+   "target": "final:cap",
+   "offset": 0.06
+  },
+  {
+   "token": "ALIGN",
+   "part": "cap",
+   "target": "final:cap"
+  },
+  {
+   "token": "INSERT",
+   "part": "cap",
+   "target": "final:cap",
+   "depth": 0.06,
+   "max_force": 20
+  },
+  {
+   "token": "RELEASE"
+  },
+  {
+   "token": "RETREAT",
+   "distance": 0.1
+  }
+ ]
+}

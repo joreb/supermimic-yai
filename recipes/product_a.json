@@ -1,0 +1,176 @@
+{
+ "product": "product_a",
+ "steps": [
+  {
+   "token": "MOVE_TO",
+   "pose": [
+    0.5,
+    -0.1,
+    0.3,
+    0,
+    0.38268,
+    0.92388,
+    0
+   ]
+  },
+  {
+   "token": "MOVE_TO",
+   "pose": [
+    0.42,
+    -0.22,
+    0.12,
+    0,
+    0,
+    1,
+    0
+   ]
+  },
+  {
+   "token": "GRASP",
+   "part": "peg1",
+   "grasp_pose": [
+    0,
+    0,
+    0.0,
+    0,
+    0,
+    1,
+    0
+   ]
+  },
+  {
+   "token": "RETREAT",
+   "distance": 0.06
+  },
+  {
+   "token": "MOVE_ABOVE",
+   "target": "final:peg1",
+   "offset": 0.05
+  },
+  {
+   "token": "ALIGN",
+   "part": "peg1",
+   "target": "final:peg1"
+  },
+  {
+   "token": "INSERT",
+   "part": "peg1",
+   "target": "final:peg1",
+   "depth": 0.05,
+   "max_force": 20
+  },
+  {
+   "token": "RELEASE"
+  },
+  {
+   "token": "RETREAT",
+   "distance": 0.1
+  },
+  {
+   "token": "MOVE_TO",
+   "pose": [
+    0.58,
+    -0.22,
+    0.12,
+    0,
+    0,
+    1,
+    0
+   ]
+  },
+  {
+   "token": "GRASP",
+   "part": "peg2",
+   "grasp_pose": [
+    0,
+    0,
+    0.0,
+    0,
+    0,
+    1,
+    0
+   ]
+  },
+  {
+   "token": "RETREAT",
+   "distance": 0.06
+  },
+  {
+   "token": "MOVE_ABOVE",
+   "target": "final:peg2",
+   "offset": 0.05
+  },
+  {
+   "token": "ALIGN",
+   "part": "peg2",
+   "target": "final:peg2"
+  },
+  {
+   "token": "INSERT",
+   "part": "peg2",
+   "target": "final:peg2",
+   "depth": 0.05,
+   "max_force": 20
+  },
+  {
+   "token": "RELEASE"
+  },
+  {
+   "token": "RETREAT",
+   "distance": 0.1
+  },
+  {
+   "token": "MOVE_TO",
+   "pose": [
+    0.5,
+    0.22,
+    0.12,
+    0,
+    0,
+    1,
+    0
+   ]
+  },
+  {
+   "token": "GRASP",
+   "part": "cover",
+   "grasp_pose": [
+    0,
+    0,
+    0.007,
+    0,
+    0,
+    1,
+    0
+   ]
+  },
+  {
+   "token": "RETREAT",
+   "distance": 0.06
+  },
+  {
+   "token": "MOVE_ABOVE",
+   "target": "final:cover",
+   "offset": 0.05
+  },
+  {
+   "token": "ALIGN",
+   "part": "cover",
+   "target": "final:cover"
+  },
+  {
+   "token": "INSERT",
+   "part": "cover",
+   "target": "final:cover",
+   "depth": 0.05,
+   "max_force": 20
+  },
+  {
+   "token": "RELEASE"
+  },
+  {
+   "token": "RETREAT",
+   "distance": 0.1
+  }
+ ]
+}
