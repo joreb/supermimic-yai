@@ -10,6 +10,7 @@ from supermimic_yai.context import SimContext, nominal_context, sample_context
 from supermimic_yai.product import Product
 from supermimic_yai.scene import apply_context, build_scene
 
+START_SPEC = mujoco.mjtState.mjSTATE_INTEGRATION
 _WARNS = (mujoco.mjtWarning.mjWARN_BADQACC, mujoco.mjtWarning.mjWARN_BADQVEL,
           mujoco.mjtWarning.mjWARN_BADQPOS)
 
@@ -71,6 +72,21 @@ class AssemblyEnv(gym.Env):
         mujoco.mj_forward(m, d)
         self._ready = True
         return self.obs(), {"context": ctx}
+
+    def restore(self, start):
+        """Jump to a StartState (context + full integration state); returns obs()."""
+        if start.product != self.product.name:
+            raise ValueError(f"start state is for product {start.product!r}, env has {self.product.name!r}")
+        if start.state.size != mujoco.mj_stateSize(self.model, START_SPEC):
+            raise ValueError("start state size does not match this model")
+        if start.context != self.ctx:
+            apply_context(self.model, self.index, start.context, self._base)
+            self.ctx = start.context
+        self._down_quat = self._rec = None  # executor stash from an earlier run must not leak in
+        mujoco.mj_setState(self.model, self.data, start.state, START_SPEC)
+        mujoco.mj_forward(self.model, self.data)
+        self._ready = True
+        return self.obs()
 
     def step(self, action):
         if not self._ready:
