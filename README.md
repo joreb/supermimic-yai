@@ -5,6 +5,12 @@ Yet Another Implementation of [SuperMimic: Scaling Humanoid Whole-Body Control w
 - `wiki/` — paper notes, a git submodule pointing at a private repo (`joreb/supermimic-wiki`). Collaborators with access: `git submodule update --init`.
 - `src/supermimic_yai/` — implementation (work in progress).
 
+## Demo: Product A assembled by scripted action tokens
+
+![Franka Panda assembling Product A in MuJoCo (2x speed)](media/product_a.gif)
+
+Scripted baseline (Plan 1), seed 0, played at 2x. Full-length video: [media/product_a.mp4](media/product_a.mp4). The learned SuperMimic-style controller replaces the contact tokens in Plan 2.
+
 ## Docker
 
 All tests run in the image (CPU, MuJoCo with OSMesa rendering):
