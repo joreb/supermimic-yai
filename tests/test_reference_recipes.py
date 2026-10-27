@@ -13,6 +13,9 @@ from supermimic_yai.tokens import describe, load_recipe
 
 ROOT = Path(__file__).parent.parent
 ARM = load_arm(ROOT / "arms" / "panda")
+# C's scripted ring inserts are chaotic (outcomes flip at 1e-12 friction changes);
+# measured 17/30 and 19/30 over seeds 0-29, so 8/10 was a lucky draw. A and B: 10/10.
+MIN_PASS = {"a": 8, "b": 8, "c": 5}
 
 
 def run_seed(env, recipe, seed):
@@ -44,4 +47,4 @@ def test_reference_recipe_succeeds(x, capsys):
     with capsys.disabled():
         for s, (ok, detail) in enumerate(outcomes):
             print(f"\n[product_{x} seed {s}] {'PASS' if ok else 'FAIL'} {detail}", end="")
-    assert sum(ok for ok, _ in outcomes) >= 8, outcomes
+    assert sum(ok for ok, _ in outcomes) >= MIN_PASS[x], outcomes
