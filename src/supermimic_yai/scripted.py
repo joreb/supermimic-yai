@@ -112,13 +112,13 @@ def _fingers_hold(env, name) -> bool:
 
 # ---- what is being controlled: the EE point, or the held part via its fixed EE-in-part transform ----
 class _Thing:
+    # tf is re-measured per token, so a part that shifted in the grip is controlled from where it actually is.
     def __init__(self, env, held):
         self.env, self.held = env, held
         if held is None:
             self.tf = None
         else:
-            saved = getattr(env, "_held_tf", None)
-            self.tf = saved[1] if saved and saved[0] == held else np.linalg.inv(_mat(_part(env, held))) @ _mat(_ee(env))
+            self.tf = np.linalg.inv(_mat(_part(env, held))) @ _mat(_ee(env))
 
     def pose(self):
         return _ee(self.env) if self.held is None else _part(self.env, self.held)
@@ -212,7 +212,6 @@ def _grasp(run, tok):
     run.converge(ee, lift, 0.0)
     if not _fingers_hold(env, tok.part) or _part(env, tok.part)[2] - z0 < 0.015:
         raise _Fail("grasp failed")
-    env._held_tf = (tok.part, np.linalg.inv(_mat(_part(env, tok.part))) @ _mat(_ee(env)))
     return tok.part
 
 
@@ -277,7 +276,6 @@ def _run(env, tok, held, run):
     elif isinstance(tok, Release):
         for _ in range(round(0.5 / run.dt)):
             run.tick(_ee(env), 1.0)
-        env._held_tf = None
         return None
     elif isinstance(tok, Align):
         p = np.array(resolve_target(tok.target, env.product), dtype=np.float64)
@@ -326,7 +324,6 @@ def run_token(env, token: Token, held: str | None) -> tuple[TokenResult, str | N
 
 def execute(env, recipe: Recipe, record: bool = False, fps: int = 25) -> ExecutionLog:
     log, held = ExecutionLog(), None
-    env._held_tf = None
     if record:
         hz = 1 / (env.substeps * env.model.opt.timestep)
         env._rec = {"r": mujoco.Renderer(env.model, 480, 640), "frames": log.frames,

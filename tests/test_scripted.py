@@ -1,12 +1,13 @@
 from pathlib import Path
 
+import mujoco
 import numpy as np
 
 from supermimic_yai.arm import load_arm
 from supermimic_yai.context import nominal_context
 from supermimic_yai.env import AssemblyEnv
 from supermimic_yai.product import load_product
-from supermimic_yai.scripted import _down, _mat, _pose, execute, run_token
+from supermimic_yai.scripted import _Thing, _down, _ee, _mat, _part, _pose, execute, run_token
 from supermimic_yai.tokens import Grasp, Insert, MoveAbove, MoveTo, Press, Recipe, Release, Retreat
 
 ROOT = Path(__file__).parent.parent
@@ -94,3 +95,13 @@ def test_press_blocked_reports_force_limit_or_misaligned():
     run_token(env, MoveTo((top[0], top[1], 0.1, *ee[3:])), None)
     res, _ = run_token(env, Press("peg2", (0, 0, -1), 5.0), None)  # peg2 rests on the table
     assert not res.ok and res.reason in ("force limit", "misaligned")
+
+
+def test_held_transform_follows_grip_shift():
+    env = fresh()
+    _grasp_peg1(env)
+    adr = env.index.part_qpos_adr["peg1"]
+    env.data.qpos[adr] += 0.002  # the part slides 2 mm in the grip
+    mujoco.mj_forward(env.model, env.data)
+    thing = _Thing(env, "peg1")
+    assert np.allclose(thing.ee_target(_part(env, "peg1"))[:3], _ee(env)[:3], atol=1e-6)
