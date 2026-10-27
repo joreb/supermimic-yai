@@ -12,4 +12,5 @@ def test_no_product_or_arm_names_in_src():
         for i, line in enumerate(p.read_text().splitlines(), 1)
         if PATTERN.search(line)
     ]
+    assert list(src.rglob("*.py")), "no files scanned"
     assert not hits, hits

@@ -39,7 +39,7 @@ def _seed(args):
 @pytest.mark.slow
 @pytest.mark.parametrize("x", ["a", "b", "c"], ids=lambda x: f"product_{x}")
 def test_reference_recipe_succeeds(x, capsys):
-    with ProcessPoolExecutor(min(10, os.cpu_count() or 1)) as pool:  # one sim per seed, in parallel
+    with ProcessPoolExecutor(int(os.environ.get("SMY_WORKERS", min(4, os.cpu_count() or 1)))) as pool:  # one sim per seed, in parallel
         outcomes = list(pool.map(_seed, [(x, s) for s in range(10)]))
     with capsys.disabled():
         for s, (ok, detail) in enumerate(outcomes):

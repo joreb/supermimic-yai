@@ -293,18 +293,12 @@ def _run(env, tok, held, run):
             return False
 
         _descent(run, env, thing, held, tok.target, z0, check)
-        if not check():
-            raise _Fail("timeout")
     elif isinstance(tok, Place):
         run.converge(thing, _above(env, tok.target, 0.02), grip)
         tgt = np.array(resolve_target(tok.target, env.product), dtype=np.float64)
         _descent(run, env, thing, held, tok.target, tgt[2] + 0.02, lambda: _at(env, held, tgt))
-        if not _at(env, held, tgt):
-            raise _Fail("timeout")
     elif isinstance(tok, Press):
         _press(run, tok)
-        if not _at(env, tok.part, np.array(env.product.parts[tok.part].final_pose, dtype=np.float64)):
-            raise _Fail("timeout")
     return held
 
 

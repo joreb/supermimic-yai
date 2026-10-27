@@ -28,6 +28,15 @@ class ArmSpec:
 
 def load_arm(arm_dir: Path) -> ArmSpec:
     arm_dir = Path(arm_dir)
+    try:
+        return _load(arm_dir)
+    except (KeyError, TypeError, ValueError) as e:
+        if isinstance(e, ArmError):
+            raise
+        raise ArmError(f"{arm_dir}: bad arm.yaml ({e!r})") from None
+
+
+def _load(arm_dir: Path) -> ArmSpec:
     data = yaml.safe_load((arm_dir / "arm.yaml").read_text())
     mjcf = os.path.expandvars(data["mjcf"])
     if "$" in mjcf:
@@ -46,6 +55,13 @@ def load_arm(arm_dir: Path) -> ArmSpec:
         for name in names:
             if mujoco.mj_name2id(model, kind, name) < 0:
                 raise ArmError(f"{name!r} not found in {mjcf_path}")
+
+    if len(data["home_qpos"]) != len(data["arm_joints"]):
+        raise ArmError("home_qpos must have one value per arm joint")
+    if len(data["ee_offset"]) != 3:
+        raise ArmError("ee_offset must have 3 values")
+    if [float(v) for v in data["base_pose"]] != [0, 0, 0, 1, 0, 0, 0]:
+        raise ArmError("base_pose not supported yet")
 
     return ArmSpec(
         name=arm_dir.name,

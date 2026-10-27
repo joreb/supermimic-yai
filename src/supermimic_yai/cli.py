@@ -31,7 +31,7 @@ def main(argv=None) -> int:
     try:
         arm, product = load_arm(arm_dir), load_product(a.assembly_dir)
         recipe = load_recipe(a.recipe, product, arm)
-    except (ArmError, ProductError, RecipeError, OSError) as e:
+    except (ValueError, KeyError, TypeError, OSError) as e:  # incl. ArmError, ProductError, RecipeError
         print(f"error: {e}", file=sys.stderr)
         return 2
 

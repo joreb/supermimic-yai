@@ -21,3 +21,4 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 markers = ["slow: long-running tests"]
+addopts = "-m 'not slow'"

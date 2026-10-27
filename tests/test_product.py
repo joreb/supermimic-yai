@@ -73,3 +73,15 @@ def test_start_poses_on_table_and_separated(name):
         for c in names[i + 1:]:
             gap = np.maximum(boxes[a][0, :2] - boxes[c][1, :2], boxes[c][0, :2] - boxes[a][1, :2])
             assert gap.max() >= 0.03, (a, c)
+
+
+@pytest.mark.parametrize("field,value", [("mass", "heavy"), ("mass", None), ("fixed", "yes"), ("fixed", 1)])
+def test_bad_mass_or_fixed_raises(tmp_path, field, value):
+    shutil.copytree(PRODUCTS / "product_a", tmp_path / "a")
+    f = tmp_path / "a" / "assembly.json"
+    d = json.loads(f.read_text())
+    part = next(iter(d["parts"]))
+    d["parts"][part][field] = value
+    f.write_text(json.dumps(d))
+    with pytest.raises(ProductError, match=rf"{part}.*{field}"):
+        load_product(tmp_path / "a")

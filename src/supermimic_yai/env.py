@@ -38,6 +38,10 @@ class AssemblyEnv(gym.Env):
         self.model, self.index = build_scene(self.arm, self.product, ctx)
         self.data = mujoco.MjData(self.model)
         self.ctx = ctx
+        m = self.model
+        self._arm_dof = [int(m.jnt_dofadr[mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, j)])
+                         for j in self.arm.arm_joints]
+        self._ready = False
 
     def _set_ctrl(self, target, grip):
         i, a = self.index, self.arm
@@ -48,7 +52,7 @@ class AssemblyEnv(gym.Env):
         d, i = self.data, self.index
         ee_rot = d.xmat[i.ee_body].reshape(3, 3)
         return {
-            "arm_qpos": d.qpos[i.arm_qpos_adr].copy(),
+            "arm_qpos": d.qpos[i.arm_qpos_adr] - self.ctx.joint_offsets,  # encoder frame; ee/part poses stay true
             "arm_qvel": d.qvel[self._arm_dof].copy(),
             "gripper": np.array([d.actuator_length[i.gripper_ctrl_idx]]),
             "ee_pose": np.concatenate([d.xpos[i.ee_body] + ee_rot @ i.ee_offset, d.xquat[i.ee_body]]),
@@ -64,13 +68,14 @@ class AssemblyEnv(gym.Env):
         m, d = self.model, self.data
         mujoco.mj_resetData(m, d)  # parts keep their built start poses via qpos0
         d.qpos[self.index.arm_qpos_adr] = self.arm.home_qpos
-        self._arm_dof = [int(m.jnt_dofadr[mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, j)])
-                         for j in self.arm.arm_joints]
         self._set_ctrl(self.arm.home_qpos, 1.0)
         mujoco.mj_forward(m, d)
+        self._ready = True
         return self._obs(), {"context": ctx}
 
     def step(self, action):
+        if not self._ready:
+            raise RuntimeError("call reset() first")
         a = np.asarray(action, dtype=np.float64)
         self._set_ctrl(a[:self.n_arm], float(np.clip(a[self.n_arm], 0.0, 1.0)))
         before = [self.data.warning[w].number for w in _WARNS]

@@ -1,9 +1,10 @@
-import time
+import coacd
 from pathlib import Path
 
 import mujoco
 import numpy as np
 import pytest
+import trimesh
 
 from supermimic_yai.arm import load_arm
 from supermimic_yai.collision import decompose
@@ -23,9 +24,28 @@ def prod(x):
 def test_decompose_caches():
     mesh = next(iter(prod("a").parts.values())).mesh
     a = decompose(mesh, CACHE)
-    t = time.perf_counter()
-    b = decompose(mesh, CACHE)
-    assert a == b and a and time.perf_counter() - t < 0.1
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(coacd, "run_coacd", lambda *a, **k: pytest.fail("cache miss"))
+        b = decompose(mesh, CACHE)
+    assert a == b and a
+
+
+def test_decompose_failure_leaves_no_partial_dir(tmp_path, monkeypatch):
+    mesh = next(iter(prod("a").parts.values())).mesh
+    monkeypatch.setattr(coacd, "run_coacd", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    cache = tmp_path / "c"
+    with pytest.raises(RuntimeError):
+        decompose(mesh, cache)
+    assert not cache.exists() or not list(cache.iterdir())
+
+
+def test_decompose_write_failure_cleans_tmp(tmp_path, monkeypatch):
+    mesh = next(iter(prod("a").parts.values())).mesh
+    monkeypatch.setattr(coacd, "run_coacd", lambda *a, **k: [([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]])])
+    monkeypatch.setattr(trimesh.Trimesh, "export", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("disk")))
+    with pytest.raises(RuntimeError):
+        decompose(mesh, tmp_path / "c")
+    assert not list((tmp_path / "c").iterdir())
 
 
 @pytest.mark.parametrize("x", "abc")

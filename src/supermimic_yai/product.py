@@ -69,14 +69,19 @@ def load_product(directory: Path) -> Product:
             raise ProductError(f"cannot load mesh {mesh_path.name}: {e}") from None
         if not mesh.is_watertight:
             raise ProductError(f"mesh {mesh_path.name} is not watertight")
-        mass = float(p["mass"])
-        if mass <= 0:
+        try:
+            mass = float(p["mass"])
+        except (TypeError, ValueError):
+            raise ProductError(f"part {pname!r}: mass must be a number") from None
+        if not isinstance(p["fixed"], bool):
+            raise ProductError(f"part {pname!r}: fixed must be true or false")
+        if not mass > 0:
             raise ProductError(f"part {pname!r}: mass must be positive")
         parts[pname] = PartSpec(
             pname, mesh_path, mass,
             _pose(pname, "start_pose", p["start_pose"]),
             _pose(pname, "final_pose", p["final_pose"]),
-            bool(p["fixed"]),
+            p["fixed"],
         )
 
     fixed = [s for s in parts.values() if s.fixed]

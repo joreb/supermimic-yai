@@ -1,4 +1,8 @@
 import hashlib
+from importlib.metadata import version
+import os
+import shutil
+import tempfile
 from pathlib import Path
 
 import coacd
@@ -14,16 +18,25 @@ MAX_PIECES = 64
 
 def _pieces(mesh, mesh_path: Path, threshold: float, cache_dir: Path) -> list[Path]:
     h = hashlib.sha256(Path(mesh_path).read_bytes())
+    h.update(version("coacd").encode())
     h.update(repr(threshold).encode())
     out = Path(cache_dir) / h.hexdigest()
-    done = out / "done"
-    if not done.exists():
+    if not out.exists():
         coacd.set_log_level("error")
         parts = coacd.run_coacd(coacd.Mesh(mesh.vertices, mesh.faces), threshold=threshold, seed=0)
-        out.mkdir(parents=True, exist_ok=True)
-        for i, (v, f) in enumerate(parts):
-            trimesh.Trimesh(np.asarray(v), np.asarray(f)).export(out / f"piece_{i:03d}.stl")
-        done.touch()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = Path(tempfile.mkdtemp(dir=out.parent))  # publish atomically so a crash/race never leaves a partial dir
+        try:
+            for i, (v, f) in enumerate(parts):
+                trimesh.Trimesh(np.asarray(v), np.asarray(f)).export(tmp / f"piece_{i:03d}.stl")
+            os.replace(tmp, out)
+        except OSError:  # lost the race (out now exists and is non-empty) or write failed
+            shutil.rmtree(tmp, ignore_errors=True)
+            if not out.exists():
+                raise
+        except BaseException:
+            shutil.rmtree(tmp, ignore_errors=True)
+            raise
     return sorted(out.glob("piece_*.stl"))
 
 
@@ -36,4 +49,5 @@ def decompose(mesh_path: Path, cache_dir: Path) -> list[Path]:
         pieces = _pieces(mesh, mesh_path, threshold, cache_dir)
         if len(pieces) <= MAX_PIECES:
             break
+    # (more than MAX_PIECES at the coarsest threshold is returned as-is)
     return pieces

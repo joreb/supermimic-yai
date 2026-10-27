@@ -1,6 +1,9 @@
 from pathlib import Path
 
+import dataclasses
+
 import numpy as np
+import pytest
 
 from supermimic_yai.context import nominal_context
 from supermimic_yai.arm import load_arm
@@ -35,3 +38,20 @@ def test_unstable_terminates():
     ENV.data.qvel[:] = 1e9
     _, _, term, _, info = ENV.step(np.append(ARM.home_qpos, 1.0))
     assert term and info["unstable"]
+
+
+def test_step_before_reset_raises_clear_error():
+    env = AssemblyEnv(ARM, load_product(ROOT / "products" / "product_a"))
+    with pytest.raises(RuntimeError, match="reset"):
+        env.step(np.append(ARM.home_qpos, 1.0))
+
+
+def test_obs_arm_qpos_is_encoder_frame():
+    ctx = nominal_context(ENV.product, 7)
+    ctx = dataclasses.replace(ctx, joint_offsets=(0.03,) * 7)
+    ENV.reset(options={"context": ctx})
+    act = np.append(ARM.home_qpos, 1.0)
+    for _ in range(50):
+        obs, *_ = ENV.step(act)
+    assert np.abs(obs["arm_qpos"] - ARM.home_qpos).max() < 2e-3
+    assert np.abs(ENV.data.qpos[ENV.index.arm_qpos_adr] - (np.array(ARM.home_qpos) + 0.03)).max() < 2e-3

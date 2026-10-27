@@ -108,6 +108,8 @@ def resolve_target(target: str, product: Product) -> Pose:
 def _number(v, name: str) -> float:
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         raise RecipeError(f"{name} must be a number, got {v!r}")
+    if not math.isfinite(v):
+        raise RecipeError(f"{name} must be finite, got {v!r}")
     return float(v)
 
 

@@ -97,3 +97,9 @@ def test_describe_one_line_per_step():
     assert len(lines) == len(r.steps)
     assert all("\n" not in line for line in lines)
     assert lines[2].startswith("3. Insert peg1 into its final position, 10 mm deep")
+
+
+def test_non_finite_number_rejected():
+    d = recipe_with(**{"0": {"offset": float("nan")}})
+    with pytest.raises(RecipeError, match="offset"):
+        parse_recipe(d, PRODUCT, ARM)

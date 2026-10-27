@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,7 +38,8 @@ def _start_pose(pose, noise):
 
 
 def build_scene(arm: ArmSpec, product: Product, ctx: SimContext,
-                cache_dir: Path = Path(".cache/coacd")) -> tuple[mujoco.MjModel, SceneIndex]:
+                cache_dir: Path | None = None) -> tuple[mujoco.MjModel, SceneIndex]:
+    cache_dir = Path(cache_dir or os.environ.get("SMY_CACHE_DIR", ".cache/coacd"))
     spec = mujoco.MjSpec.from_file(str(arm.mjcf))
     for k in list(spec.keys):  # arm keyframes have the wrong qpos size once free joints are added
         spec.delete(k)
