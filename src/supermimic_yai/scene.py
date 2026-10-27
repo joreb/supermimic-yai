@@ -41,8 +41,10 @@ def build_scene(arm: ArmSpec, product: Product, ctx: SimContext,
     spec = mujoco.MjSpec.from_file(str(arm.mjcf))
     for k in list(spec.keys):  # arm keyframes have the wrong qpos size once free joints are added
         spec.delete(k)
+    spec.memory = 256 * 1024 * 1024  # many convex pieces x multi-point contacts need a big arena
     spec.option.timestep = 0.002
     spec.option.noslip_iterations = 2
+    spec.option.enableflags |= mujoco.mjtEnableBit.mjENBL_MULTICCD  # mesh pairs otherwise yield one contact point, so resting boxes drift
     for b in spec.bodies:  # position actuators sag under gravity otherwise; parts are added after, so unaffected
         b.gravcomp = 1.0
     world = spec.worldbody
@@ -72,6 +74,7 @@ def build_scene(arm: ArmSpec, product: Product, ctx: SimContext,
                               density=density, group=3)
             g.friction[0] = ctx.friction
             g.solref, g.solimp = SOLREF, SOLIMP
+            g.condim = 4  # torsional friction: a pinched part otherwise pivots freely about the pinch axis
 
     model = spec.compile()
 

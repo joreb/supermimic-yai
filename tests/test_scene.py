@@ -99,3 +99,28 @@ def test_contact_is_stiff():
         if i > 50 and d.ncon:  # skip the first 0.1 s impact transient of the suddenly applied load
             deepest = max(deepest, -min(c.dist for c in d.contact[:d.ncon]))
     assert deepest < 0.002 and np.isfinite(d.qacc).all()
+
+
+def test_mesh_contacts_resolved_fully():
+    p = prod("a")
+    model, idx = build_scene(ARM, p, nominal_context(p, 7), CACHE)
+    geoms = [g for b in idx.part_body.values() for g in np.flatnonzero(model.geom_bodyid == b)]
+    assert model.opt.enableflags & mujoco.mjtEnableBit.mjENBL_MULTICCD  # flat mesh faces need several contact points
+    assert np.all(model.geom_condim[[g for g in geoms if model.geom_contype[g]]] == 4)  # torsional friction: parts do not pivot in a pinch
+    assert model.narena >= 2 ** 28  # dozens of convex pieces x multi-point contacts overflow the default arena
+
+
+def test_decomposition_keeps_hole_clearance():
+    from scipy.spatial import ConvexHull
+    import trimesh
+    p = prod("a")
+    assert len(decompose(p.parts["peg1"].mesh, CACHE)) == 1  # convex parts stay whole
+    worst = 1.0
+    for piece in decompose(p.parts["base"].mesh, CACHE):
+        xy = trimesh.load(piece, force="mesh").vertices[:, :2]
+        poly = xy[ConvexHull(xy).vertices]
+        for axis in ((-0.03, 0.0), (0.03, 0.0)):  # hole centres, mesh frame
+            for a, b in zip(poly, np.roll(poly, -1, axis=0)):
+                t = np.clip((axis - a) @ (b - a) / ((b - a) @ (b - a)), 0, 1)
+                worst = min(worst, np.linalg.norm(axis - (a + t * (b - a))))
+    assert worst > 0.0103  # 10 mm peg radius in an 11 mm hole: hull facets may eat < 0.7 mm of the 1 mm gap
