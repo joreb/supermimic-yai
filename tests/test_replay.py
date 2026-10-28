@@ -1,7 +1,6 @@
 import numpy as np
 
 from supermimic_yai.config import load_config
-from supermimic_yai.npmlp import mlp_forward
 from supermimic_yai.replay import ReplayBuffer
 
 
@@ -55,9 +54,8 @@ def test_norm_stats_skip_unstable():
     assert len(b.stable_rows()) == 7 and not b.unstable[b.stable_rows()].any()
 
 
-def test_mlp_and_config():
-    w = [(np.eye(2), np.zeros(2)), (np.eye(2), np.zeros(2))]
-    assert np.allclose(mlp_forward(w, np.array([1.0, -50.0])), np.tanh([1.0, -1.0]))
+def test_config():
     c = load_config("laptop")
     assert c["wm"]["width"] == 512 and c["wm"]["k"] == 8 and c["collect"]["workers"] >= 1
     assert load_config("big-gpu")["wm"]["batch"] == 2048 * 10
+    assert c["replay"]["capacity"] == 400000 and load_config("big-gpu")["policy"]["batch"] == 4096

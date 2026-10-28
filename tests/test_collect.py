@@ -107,23 +107,44 @@ def test_script_ok_unregistered(a_bank, monkeypatch):
     assert e["terminal_kind"] == "script_ok_unregistered" and not e["done"].any()
 
 
-def test_policy_gripper_clipped_and_noiseless(a_bank):
+def _zero_actor(env, bias):
+    n, sd = env.n_arm, 2 * env.n_arm + 17
+    z = lambda *sh: np.zeros(sh)  # noqa: E731
+    return {"s_mu": z(sd), "s_sd": np.ones(sd), "enc": [[(z(3, 4), z(4))] for _ in TOKEN_KINDS],
+            "dec": [(z(sd + 4, n + 1), np.append(z(n), bias))]}
+
+
+def test_policy_gripper_range_and_noiseless(a_bank):
     env, tok, st = _tok(a_bank, "ALIGN")
     n = env.n_arm
-    for b, want in ((5.0, np.tanh(5.0)), (-0.5, 0.0)):
-        w = [(np.zeros((2 * n + 17 + 3, n + 1)), np.append(np.zeros(n), b))]
-        e = C.run_episode(env, tok, st, 0.05, 0.5, np.random.default_rng(0), w)
-        assert (e["a"][:, n] == want).all() and (np.abs(e["a"][:, :n]) <= 1).all()
+    for b, want in ((5.0, (np.tanh(5.0) + 1) / 2), (-0.5, (np.tanh(-0.5) + 1) / 2)):
+        e = C.run_episode(env, tok, st, 0.05, 0.5, np.random.default_rng(0), _zero_actor(env, b))
+        assert np.allclose(e["a"][:, n], want) and (np.abs(e["a"][:, :n]) <= 1).all()
 
 
 def test_timeout_is_truncation(a_bank, monkeypatch):
     env, tok, st = _tok(a_bank, "ALIGN")
-    n = env.n_arm
     monkeypatch.setattr(C, "budget_steps", lambda env, tok: 3)
-    w = [(np.zeros((2 * n + 17 + 3, n + 1)), np.zeros(n + 1))]
-    for weights in (w, None):  # policy loop and scripted recorder both stop on terminal_kind
+    for weights in (_zero_actor(env, 0.0), None):  # policy loop and scripted recorder both stop on terminal_kind
         e = C.run_episode(env, tok, st, 0.05, 0.0, np.random.default_rng(0), weights)
         assert e["terminal_kind"] == "timeout" and len(e["a"]) == 3 and not e["done"].any()
+
+
+def test_policy_episode_fields(collector):
+    c, _, _ = collector
+    from supermimic_yai.policy import Actor
+    eps = c.collect(4, None, rng_seed=3)
+    s_dim, a_dim = eps[0]["s"].shape[1], eps[0]["a"].shape[1]
+    w = Actor(s_dim, eps[0]["goal"].shape[0], a_dim, len(TOKEN_KINDS), 8, 16, 2).export()
+    eps = c.collect(4, w, rng_seed=3)
+    assert len(eps) == 4
+    for e in eps:
+        assert c.bank[e["start_idx"]].step == e["step"] and (e["a"][:, a_dim - 1] >= 0).all() and (e["a"][:, a_dim - 1] <= 1).all()
+
+
+def test_noise_override(collector):
+    c, _, _ = collector
+    assert {e["noise"] for e in c.collect(6, None, rng_seed=2, noise=[0.0])} == {0.0}
 
 
 def test_env_lru_cap(a_bank, tmp_path):

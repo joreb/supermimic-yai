@@ -14,7 +14,8 @@ Episode dict (one token episode, T transitions):
 Scripted seed data (policy_weights=None, ruling R2): run_token drives the env through a wrapper that turns each absolute
 arm target into a learner action, adds N(0, action_noise^2), and executes it through TokenEpisode.step (so state,
 reward and terminal conditions are exactly the policy-rollout ones). The gripper channel gets no noise in either path.
-Policy rollouts feed mlp_forward(weights, [s, goal]) (+ the same arm noise).
+Policy rollouts feed actor_forward(weights, s, goal, kind) (+ the same arm noise; gripper already in [0, 1]).
+  step int recipe step index of the start state | start_idx int index into Collector.bank
 """
 import json
 import multiprocessing as mp
@@ -23,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from supermimic_yai.npmlp import mlp_forward
+from supermimic_yai.npmlp import actor_forward
 from supermimic_yai.startbank import load_bank, resolve_recipe
 from supermimic_yai.task import TOKEN_KINDS, TokenEpisode, budget_steps, involved_context
 
@@ -59,10 +60,11 @@ class _Recorder:
         return None, 0.0, False, False, {}
 
 
-def run_episode(env, tok, start, scale, noise, rng, weights=None):
+def run_episode(env, tok, start, scale, noise, rng, weights=None, start_idx=-1):
     """-> episode dict, or None if it had no steps."""
     from supermimic_yai.scripted import run_token
     ep = TokenEpisode(env, start, tok, budget_steps(env, tok), scale)
+    kind = TOKEN_KINDS.index(tok.kind)
     S, rec = [ep.reset()], {"a": [], "r": [], "done": [], "unstable": []}
     why, res = [None], None
 
@@ -81,9 +83,8 @@ def run_episode(env, tok, start, scale, noise, rng, weights=None):
     else:
         info = {}
         while "terminal_kind" not in info:
-            a = mlp_forward(weights, np.concatenate([ep.s, ep.goal]))
+            a = actor_forward(weights, ep.s, ep.goal, kind)
             a[:ep.n] = np.clip(a[:ep.n] + noise * rng.standard_normal(ep.n), -1.0, 1.0)
-            a[ep.n] = np.clip(a[ep.n], 0.0, 1.0)
             _, r, done, info = ep.step(a)
             log(a, ep.s, r, done, info)
     if not rec["a"]:
@@ -91,9 +92,9 @@ def run_episode(env, tok, start, scale, noise, rng, weights=None):
     if why[0] is None:
         why[0] = f"script_abort:{res.reason}" if not res.ok else "script_ok_unregistered"
     return {"s": np.array(S), "a": np.array(rec["a"]), "r": np.array(rec["r"]), "done": np.array(rec["done"]),
-            "unstable": np.array(rec["unstable"]), "kind": TOKEN_KINDS.index(tok.kind), "goal": ep.goal,
+            "unstable": np.array(rec["unstable"]), "kind": kind, "goal": ep.goal,
             "ctx": involved_context(start.context, start.held, env.part_order), "terminal_kind": why[0],
-            "noise": noise, "product": start.product}
+            "noise": noise, "product": start.product, "step": start.step, "start_idx": start_idx}
 
 
 def _init(arm_dir, products, envs_per_worker, scale):
@@ -122,10 +123,10 @@ def _env_for(name):
 def _run_chunk(args):
     jobs, weights = args
     out = []
-    for start, seed, noise in jobs:
+    for start, seed, noise, idx in jobs:
         env, recipe = _env_for(start.product)
         out.append(run_episode(env, recipe.steps[start.step], start, _G["scale"], noise,
-                               np.random.default_rng(seed), weights))
+                               np.random.default_rng(seed), weights, idx))
     return out
 
 
@@ -135,7 +136,7 @@ def _probe(args):
     import sys
     import time
     jobs, weights, noise = args
-    _run_chunk(([(s, sd, noise) for s, sd in jobs], weights))
+    _run_chunk(([(s, sd, noise, -1) for s, sd in jobs], weights))
     time.sleep(0.5)
     return os.getpid(), "torch" in sys.modules, len(_G["envs"]), _G["peak"]
 
@@ -151,12 +152,15 @@ class Collector:
         self.pool = mp.get_context("spawn").Pool(
             self.workers, _init, (str(arm_dir), products, cfg["collect"]["envs_per_worker"], cfg["action_scale"]))
 
-    def collect(self, n_episodes, policy_weights=None, rng_seed=0, sampler=None):
-        """sampler(rng, bank) -> index into bank; default uniform (Plan 2b swaps in return-based reset sampling)."""
+    def collect(self, n_episodes, policy_weights=None, rng_seed=0, sampler=None, noise=None):
+        """sampler(rng, bank) -> index into bank; default uniform (Plan 2b swaps in return-based reset sampling).
+        noise: list overriding collect.action_noise ([0.0] for evaluation)."""
+        noises = noise if noise is not None else self.noises
         rng = np.random.default_rng(rng_seed)
         pick = sampler or (lambda r, bank: int(r.integers(len(bank))))
         seeds = rng.integers(0, 2**63 - 1, n_episodes)
-        jobs = sorted(((self.bank[pick(rng, self.bank)], int(sd), float(rng.choice(self.noises))) for sd in seeds),
+        idx = [pick(rng, self.bank) for _ in seeds]
+        jobs = sorted(((self.bank[i], int(sd), float(rng.choice(noises)), i) for i, sd in zip(idx, seeds)),
                       key=lambda j: j[0].product)
         m = max(1, -(-n_episodes // (self.workers * 4)))  # same-product jobs stay together so envs are reused
         res = self.pool.map(_run_chunk, [(jobs[i:i + m], policy_weights) for i in range(0, len(jobs), m)])
