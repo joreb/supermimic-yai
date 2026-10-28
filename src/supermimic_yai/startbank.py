@@ -62,3 +62,35 @@ def load_bank(path):
     with np.load(path.with_suffix(".npz")) as z:
         return [StartState(m["product"], m["step"], m["token"], m["held"], _ctx_from(m["context"]), z[f"s{i}"])
                 for i, m in enumerate(meta)]
+
+
+def resolve_recipe(pdir):
+    """<dir>/recipe.json if present, else recipes/<dir name>.json beside the products directory."""
+    d = Path(pdir)
+    return d / "recipe.json" if (d / "recipe.json").exists() else d.parent.parent / "recipes" / f"{d.name}.json"
+
+
+def main(argv=None):
+    import argparse
+
+    from supermimic_yai import seeds as seedmod
+    from supermimic_yai.arm import load_arm
+    from supermimic_yai.product import load_product
+    from supermimic_yai.tokens import load_recipe
+    ap = argparse.ArgumentParser(description="Snapshot start states for several products into one bank.")
+    ap.add_argument("--products", nargs="+", required=True)
+    ap.add_argument("--seeds", type=int, required=True, help="number of TRAIN seeds per product")
+    ap.add_argument("--out", required=True, help="bank path, ending in .npz")
+    ap.add_argument("--arm", required=True, help="arm directory")
+    a = ap.parse_args(argv)
+    arm, states = load_arm(Path(a.arm)), []
+    for d in a.products:
+        product = load_product(Path(d))
+        recipe = load_recipe(resolve_recipe(d), product, arm)
+        states += collect_start_states(arm, product, recipe, seedmod.TRAIN[:a.seeds])
+        print(f"{product.name}: {len(states)} states so far", flush=True)
+    save_bank(a.out, states)
+
+
+if __name__ == "__main__":
+    main()
