@@ -99,7 +99,7 @@ def contact_force(env, name) -> float:
     return tot
 
 
-def _fingers_hold(env, name) -> bool:
+def fingers_hold(env, name) -> bool:
     geoms, touched = _part_geoms(env, name), set()
     fb = {g: env.model.geom_bodyid[g] for g in env.index.finger_geoms}
     for k in range(env.data.ncon):
@@ -204,13 +204,13 @@ def _grasp(run, tok):
     run.converge(ee, E, 1.0)
     for _ in range(round(0.5 / run.dt)):
         run.tick(E, 0.0)
-    if not _fingers_hold(env, tok.part):
+    if not fingers_hold(env, tok.part):
         raise _Fail("grasp failed")
     lift = E.copy()
     lift[2] += 0.02
     run.ramp(ee, E, Z, APPROACH_SPEED, 0.02, 0.0)
     run.converge(ee, lift, 0.0)
-    if not _fingers_hold(env, tok.part) or _part(env, tok.part)[2] - z0 < 0.015:
+    if not fingers_hold(env, tok.part) or _part(env, tok.part)[2] - z0 < 0.015:
         raise _Fail("grasp failed")
     return tok.part
 
