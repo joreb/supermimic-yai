@@ -36,7 +36,7 @@ def test_fifo_overwrites_oldest():
         b.add(ep(4, tag))  # 12 transitions into 10 rows: episode 1 is partly gone
     assert b.size == 10
     w = b.sample_windows(3, 100, rng)
-    assert set(np.round(w["s"][:, 0, 0])) == {2, 3}  # the damaged oldest episode yields no window
+    assert set(np.round(w["s"][:, 0, 0])) == {2, 3}  # the 2 surviving rows of overwritten episode 1 are fewer than k, so no window starts there
     assert (np.diff(w["s"][:, :, 0], axis=1) > 0).all()
 
 
