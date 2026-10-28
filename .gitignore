@@ -16,3 +16,4 @@ docs/
 MUJOCO_LOG.TXT
 out/
 products_train/
+runs/

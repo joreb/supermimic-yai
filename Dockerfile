@@ -4,6 +4,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir mujoco==3.3.5 gymnasium==1.4.0 trimesh==5.2.0 manifold3d==3.5.4 coacd==1.0.14 \
     imageio==2.38.1 imageio-ffmpeg==0.6.0 pyyaml==6.0.3 numpy==2.5.4 pytest==9.1.1 \
     python-fcl==0.7.0.11 scipy==1.18.1
+RUN pip install --no-cache-dir torch==2.8.0 --index-url https://download.pytorch.org/whl/cu126
+RUN pip install --no-cache-dir tensorboard==2.20.0
 RUN git clone https://github.com/google-deepmind/mujoco_menagerie /opt/mujoco_menagerie \
     && cd /opt/mujoco_menagerie \
     && git checkout f3b6013629c7b94f8ee93fd977b161fa8350f9bc \
