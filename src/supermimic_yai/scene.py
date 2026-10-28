@@ -122,7 +122,7 @@ def apply_context(model: mujoco.MjModel, index: SceneIndex, ctx: SimContext, bas
     for name, adr in index.part_qpos_adr.items():
         dx, dy, dyaw = ctx.start_pose_noise[name]
         q = base_model.qpos0[adr:adr + 7]
-        pos, quat = _start_pose(np.concatenate([q[:3], q[3:]]), (dx, dy, dyaw))
+        pos, quat = _start_pose(q, (dx, dy, dyaw))
         m.qpos0[adr:adr + 3], m.qpos0[adr + 3:adr + 7] = pos, quat
         m.qpos_spring[adr:adr + 3], m.qpos_spring[adr + 3:adr + 7] = pos, quat
         b = index.part_body[name]

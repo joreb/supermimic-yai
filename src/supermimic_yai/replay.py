@@ -34,8 +34,12 @@ class ReplayBuffer:
             rows = (i[:, None] + np.arange(k)) % self.cap
             ok = np.arange(self.size) + k <= self.size
             same = (self.eid[rows] == self.eid[i][:, None]).all(1)
-            self._valid[k] = i[ok & same & ~self.unstable[rows[:, :-1]].any(1)]
+            self._valid[k] = i[ok & same & ~self.unstable[rows].any(1)]
         return self._valid[k]
+
+    def stable_rows(self):
+        """Row indices of stored transitions that are not unstable (their s_next is an auto-reset state)."""
+        return np.flatnonzero(~self.unstable[:self.size])
 
     def sample_windows(self, k, n, rng) -> dict:
         starts = self._starts(k)

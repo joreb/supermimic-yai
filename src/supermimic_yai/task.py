@@ -152,4 +152,5 @@ class TokenEpisode:
         info = {"terminal_kind": why} if why else {}
         if kind == "INSERT":
             info["max_force_ratio"] = self.ratio
-        return s2, r, why is not None, info
+        # timeout is a truncation: callers stop on "terminal_kind" in info, done stays False so the critic bootstraps
+        return s2, r, why not in (None, "timeout"), info

@@ -63,3 +63,10 @@ def test_save_load_roundtrip(a, tmp_path):
     for x, y in zip(bank, back):
         assert (x.product, x.step, x.token, x.held, x.context) == (y.product, y.step, y.token, y.held, y.context)
         assert np.array_equal(x.state, y.state)
+
+
+def test_dotted_bank_path(a, tmp_path):
+    for name in ("x.v1.npz", "y.v1"):  # save and load must agree on one pair of files
+        save_bank(tmp_path / name, a[2])
+        assert len(load_bank(tmp_path / name)) == len(a[2])
+    assert (tmp_path / "x.v1.json").exists()

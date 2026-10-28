@@ -70,7 +70,7 @@ def test_scripted_seed_data_shapes(collector):
         assert not e["done"][:-1].any()
         assert e["terminal_kind"].split(":")[0] in ("success", "unstable", "dropped", "force", "timeout",
                                                     "script_abort", "script_ok_unregistered")
-        assert e["done"][-1] == (e["terminal_kind"] in ("success", "unstable", "dropped", "force", "timeout"))
+        assert e["done"][-1] == (e["terminal_kind"] in ("success", "unstable", "dropped", "force"))
         assert TOKEN_KINDS[e["kind"]] and e["product"]
         assert np.abs(e["a"][:, :n]).max() <= 1.0
         assert set(np.unique(e["a"][:, n])) <= {0.0, 1.0}  # no noise on the gripper
@@ -114,6 +114,16 @@ def test_policy_gripper_clipped_and_noiseless(a_bank):
         w = [(np.zeros((2 * n + 17 + 3, n + 1)), np.append(np.zeros(n), b))]
         e = C.run_episode(env, tok, st, 0.05, 0.5, np.random.default_rng(0), w)
         assert (e["a"][:, n] == want).all() and (np.abs(e["a"][:, :n]) <= 1).all()
+
+
+def test_timeout_is_truncation(a_bank, monkeypatch):
+    env, tok, st = _tok(a_bank, "ALIGN")
+    n = env.n_arm
+    monkeypatch.setattr(C, "budget_steps", lambda env, tok: 3)
+    w = [(np.zeros((2 * n + 17 + 3, n + 1)), np.zeros(n + 1))]
+    for weights in (w, None):  # policy loop and scripted recorder both stop on terminal_kind
+        e = C.run_episode(env, tok, st, 0.05, 0.0, np.random.default_rng(0), weights)
+        assert e["terminal_kind"] == "timeout" and len(e["a"]) == 3 and not e["done"].any()
 
 
 def test_env_lru_cap(a_bank, tmp_path):

@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
     "mujoco==3.3.5", "gymnasium", "trimesh", "manifold3d", "coacd",
     "imageio", "imageio-ffmpeg", "pyyaml", "numpy", "python-fcl", "scipy",
-    "torch==2.8.0", "tensorboard==2.20.0",
+    "torch==2.8.0", "tensorboard==2.20.0",  # torch: pip install --index-url https://download.pytorch.org/whl/cu126 (PyPI's is cu128, no sm_61); see Dockerfile
 ]
 
 [project.scripts]

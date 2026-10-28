@@ -2,11 +2,13 @@
 
 Episode dict (one token episode, T transitions):
   s (T+1, s_dim) token states | a (T, a_dim) learner actions actually executed (noise included; a[:n] in [-1, 1]
-  scaled by action_scale, a[n] gripper) | r (T,) | done (T,) bool, True only on the last step | unstable (T,) bool
+  scaled by action_scale, a[n] gripper) | r (T,) | done (T,) bool, True only on the last step of a real termination
+  (never for timeout) | unstable (T,) bool
   kind int index into TOKEN_KINDS | goal (g_dim,) | ctx (c_dim,) involved_context (world model / critic only)
-  terminal_kind str: success / unstable / dropped / force / timeout (analytic, done=True on the last step), or for a
-  scripted run that ended first: "script_abort:<reason>" (scripted failed) / "script_ok_unregistered" (scripted ok,
-  success() not yet true). Those are truncations: done stays False everywhere.
+  terminal_kind str: success / unstable / dropped / force (analytic, done=True on the last step) or timeout
+  (truncation: episode stops at the budget, done stays False); for a scripted run that ended first:
+  "script_abort:<reason>" (scripted failed) / "script_ok_unregistered" (scripted ok, success() not yet true).
+  Those are truncations too: done stays False everywhere.
   noise float: sigma of the arm-action noise for this episode, drawn from cfg collect.action_noise (a list)
   product str (name)
 Scripted seed data (policy_weights=None, ruling R2): run_token drives the env through a wrapper that turns each absolute
@@ -52,7 +54,7 @@ class _Recorder:
         a = np.append(a, np.clip(action[n], 0.0, 1.0))
         out = ep.step(a)
         log(a, *out)
-        if out[2]:
+        if "terminal_kind" in out[3]:
             raise _Stop
         return None, 0.0, False, False, {}
 
@@ -68,7 +70,7 @@ def run_episode(env, tok, start, scale, noise, rng, weights=None):
         S.append(s2)
         rec["a"].append(a), rec["r"].append(r), rec["done"].append(done)
         rec["unstable"].append(info.get("terminal_kind") == "unstable")
-        if done:
+        if "terminal_kind" in info:
             why[0] = info["terminal_kind"]
 
     if weights is None:
@@ -77,8 +79,8 @@ def run_episode(env, tok, start, scale, noise, rng, weights=None):
         except _Stop:
             pass
     else:
-        done = False
-        while not done:
+        info = {}
+        while "terminal_kind" not in info:
             a = mlp_forward(weights, np.concatenate([ep.s, ep.goal]))
             a[:ep.n] = np.clip(a[:ep.n] + noise * rng.standard_normal(ep.n), -1.0, 1.0)
             a[ep.n] = np.clip(a[ep.n], 0.0, 1.0)

@@ -62,21 +62,24 @@ def gate_errors(s_hat, s, j, n):
     return held, pt
 
 
-def wm_loss(model, batch, k):
-    """Paper Eq. 1 minus the reward term: sum_j |s_hat_j - s_j|^2 (normalised) + BCE(done). Batch values are tensors."""
+def wm_loss(model, batch, k, metrics=False):
+    """Paper Eq. 1 minus the reward term: sum_j |s_hat_j - s_j|^2 (normalised) + BCE(done). Batch values are tensors.
+    -> (loss, {}) ; with metrics=True the dict has loss/state_loss/done_loss and per-kind errors (.item() syncs, eval only)."""
     s_hat, logits = rollout(model, batch, k)
     s = batch["s"]
     sq = (((s_hat[:, 1:] - s[:, 1:]) / model.s_sd) ** 2).sum(-1).sum(1).mean()
     bce = nn.functional.binary_cross_entropy_with_logits(logits, batch["done"].float(), reduction="none").sum(1).mean()
     loss = sq + bce
+    if not metrics:
+        return loss, {}
     n = (s.shape[-1] - _EXTRA) // 2
-    metrics = {"loss": loss.item(), "state_loss": sq.item(), "done_loss": bce.item()}
+    out = {"loss": loss.item(), "state_loss": sq.item(), "done_loss": bce.item()}
     with torch.no_grad():
-        for name, j in ((f"kstep_err", k), ("step1_err", 1)):
+        for name, j in (("kstep_err", k), ("step1_err", 1)):
             held, pt = gate_errors(s_hat, s, j, n)
             for ki, kn in enumerate(TOKEN_KINDS):
                 m = batch["kind"] == ki
                 if m.any():
-                    metrics[f"{name}/{kn}"] = held[m].mean().item()
-                    metrics[f"{name.replace('err', 'err_pt')}/{kn}"] = pt[m].mean().item()
-    return loss, metrics
+                    out[f"{name}/{kn}"] = held[m].mean().item()
+                    out[f"{name.replace('err', 'err_pt')}/{kn}"] = pt[m].mean().item()
+    return loss, out

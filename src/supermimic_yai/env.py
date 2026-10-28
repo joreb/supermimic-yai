@@ -95,10 +95,11 @@ class AssemblyEnv(gym.Env):
         if a.shape != (self.n_arm + 1,):
             raise ValueError(f"action shape {a.shape}, expected {(self.n_arm + 1,)}")
         self._set_ctrl(a[:self.n_arm], float(np.clip(a[self.n_arm], 0.0, 1.0)))
-        before = [self.data.warning[w].number for w in _WARNS]
+        for w in _WARNS:  # restore() leaves old counts in place; count only this step's warnings
+            self.data.warning[w].number = 0
         mujoco.mj_step(self.model, self.data, self.substeps)
         d = self.data
-        unstable = (any(d.warning[w].number > b for w, b in zip(_WARNS, before))
+        unstable = (any(d.warning[w].number > 0 for w in _WARNS)
                     or not (np.isfinite(d.qacc).all() and np.isfinite(d.qvel).all() and np.isfinite(d.qpos).all()))
         info = {"unstable": True} if unstable else {}
         return self.obs(), 0.0, unstable, False, info

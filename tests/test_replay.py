@@ -44,9 +44,15 @@ def test_unstable_masked():
     b = buf(50)
     b.add(ep(8, 1, unstable_at=3))
     w = b.sample_windows(2, 200, np.random.default_rng(0))
-    assert not w["unstable"][:, :-1].any()  # nothing follows an unstable step
+    assert not w["unstable"].any()  # no window contains an unstable step (its s_next is an auto-reset state)
     starts = np.round((w["s"][:, 0, 0] - 1) * 100)
-    assert set(starts) == {0, 1, 2, 4, 5, 6}  # the window that would start at the unstable step is excluded
+    assert set(starts) == {0, 1, 4, 5, 6}
+
+
+def test_norm_stats_skip_unstable():
+    b = buf(50)
+    b.add(ep(8, 1, unstable_at=3))
+    assert len(b.stable_rows()) == 7 and not b.unstable[b.stable_rows()].any()
 
 
 def test_mlp_and_config():

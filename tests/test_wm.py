@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from supermimic_yai.wm import WorldModel, rollout, wm_loss
+from supermimic_yai.wm import WorldModel, gate_errors, rollout, wm_loss
 
 N = 7
 SD, AD, CD, K = 2 * N + 17, N + 1, 5, 4
@@ -58,5 +58,17 @@ def test_runs_without_cuda():
     s2, p = m.step(b["s"][:, 0], b["a"][:, 0], b["ctx"], b["kind"])
     assert s2.device.type == "cpu" and s2.shape == (16, SD) and ((p >= 0) & (p <= 1)).all()
     m.set_norm(np.random.randn(50, SD), np.random.randn(50, SD), np.random.randn(50, CD))
-    _, met = wm_loss(m, b, K)
+    _, met = wm_loss(m, b, K, metrics=True)
     assert "kstep_err/GRASP" in met or "kstep_err/INSERT" in met
+
+
+def test_gate_errors_known_values():
+    s = torch.zeros(1, 2, SD)
+    s_hat = s.clone()
+    h, t = slice(2 * N + 1, 2 * N + 4), slice(2 * N + 9, 2 * N + 12)
+    s_hat[0, 1, h] = torch.tensor([0.003, 0.004, 0.0])  # held part off by 5 mm
+    held, pt = gate_errors(s_hat, s, 1, N)
+    assert torch.allclose(held, torch.tensor([0.005])) and torch.allclose(pt, torch.tensor([0.005]))
+    s_hat[0, 1, t] = torch.tensor([0.003, 0.004, 0.0])  # target moves with it: part-to-target error vanishes
+    held, pt = gate_errors(s_hat, s, 1, N)
+    assert torch.allclose(held, torch.tensor([0.005])) and pt.item() < 1e-7

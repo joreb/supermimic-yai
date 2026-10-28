@@ -41,6 +41,20 @@ def test_unstable_terminates():
     assert term and info["unstable"]
 
 
+def test_unstable_detected_after_every_restore():
+    from supermimic_yai.env import START_SPEC
+    from supermimic_yai.startbank import StartState
+    ENV.reset(seed=2)
+    st = np.empty(mujoco.mj_stateSize(ENV.model, START_SPEC))
+    mujoco.mj_getState(ENV.model, ENV.data, st, START_SPEC)
+    start = StartState(ENV.product.name, 0, "GRASP", None, ENV.ctx, st)
+    for _ in range(3):
+        ENV.restore(start)
+        ENV.data.qvel[0] = 1e12
+        _, _, term, _, info = ENV.step(np.append(ARM.home_qpos, 1.0))
+        assert term and info["unstable"]
+
+
 def test_step_before_reset_raises_clear_error():
     env = AssemblyEnv(ARM, load_product(ROOT / "products" / "product_a"))
     with pytest.raises(RuntimeError, match="reset"):

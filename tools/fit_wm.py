@@ -54,10 +54,12 @@ def main():
     ap.add_argument("--iters", type=int, default=20000)
     ap.add_argument("--logdir", default="runs/wm")
     ap.add_argument("--bank", default=None)
-    ap.add_argument("--products", nargs="*", default=["products/product_a", *sorted(map(str, Path("products_train").iterdir()))])
+    ap.add_argument("--products", nargs="*", default=None, help="default: products/product_a + products_train/*")
     ap.add_argument("--arm", default="arms/panda")
     ap.add_argument("--reuse", action="store_true")
     a = ap.parse_args()
+    if a.products is None:
+        a.products = ["products/product_a", *sorted(map(str, Path("products_train").iterdir()))] if not a.reuse else []
     from supermimic_yai.config import load_config
     cfg, out = load_config(a.config), Path(a.logdir)
     out.mkdir(parents=True, exist_ok=True)
@@ -92,7 +94,8 @@ def fit(cfg, eps, iters, out, t_collect=0.0):
     tb, vb = buffer(train, k), buffer(val, k)
     sd, ad, cd = train[0]["s"].shape[1], train[0]["a"].shape[1], train[0]["ctx"].shape[0]
     model = WorldModel(sd, ad, cd, len(TOKEN_KINDS), w["width"], w["depth"]).to(dev)
-    model.set_norm(tb.s[:tb.size], tb.s2[:tb.size], tb.ctx[:tb.size])
+    ok = tb.stable_rows()
+    model.set_norm(tb.s[ok], tb.s2[ok], tb.ctx[ok])
     opt = torch.optim.Adam(model.parameters(), w["lr"])
     tens = lambda b: {kk: torch.as_tensor(v, device=dev, dtype=torch.int64 if kk == "kind" else torch.float32)  # noqa: E731
                       for kk, v in b.items() if kk in ("s", "a", "ctx", "kind", "done")}
@@ -102,7 +105,7 @@ def fit(cfg, eps, iters, out, t_collect=0.0):
     def evaluate(it):
         model.eval()
         with torch.no_grad():
-            _, m = wm_loss(model, veval, k)
+            _, m = wm_loss(model, veval, k, metrics=True)
             _, lg = rollout(model, veval, k)
         model.train()
         y, p = veval["done"].cpu().numpy().ravel() > 0.5, lg.cpu().numpy().ravel()
@@ -116,21 +119,21 @@ def fit(cfg, eps, iters, out, t_collect=0.0):
                 tw.add_scalar(f"wm/{name}", v, it)
         return m
 
-    t1 = time.perf_counter()
+    t1, r = time.perf_counter(), None
     for it in range(1, iters + 1):
         batch = tens(tb.sample_windows(k, w["batch"], rng))
-        loss, m = wm_loss(model, batch, k)
+        loss, _ = wm_loss(model, batch, k)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), w["grad_clip"])
         opt.step()
         if it % 100 == 0:
-            tw.add_scalar("wm/loss", m["loss"], it)
+            tw.add_scalar("wm/loss", loss.item(), it)
             tw.add_scalar("sys/it_per_s", it / (time.perf_counter() - t1), it)
             tw.add_scalar("sys/gpu_mem_mb", torch.cuda.max_memory_allocated() / 2**20 if dev == "cuda" else 0, it)
         if it % 1000 == 0 or it == iters:
             r = evaluate(it)
-            print(f"it {it} train {m['loss']:.2f} val {r['loss']:.2f} "
+            print(f"it {it} train {loss.item():.2f} val {r['loss']:.2f} "
                   + " ".join(f"{kn} {r.get(f'kstep_err/{kn}', float('nan')) * 1e3:.2f}/{r.get(f'kstep_err_pt/{kn}', float('nan')) * 1e3:.2f}mm"
                              for kn in TOKEN_KINDS) + f" acc {r['done_acc']:.3f} auc {r['done_auc']:.3f}", flush=True)
     tw.close()
@@ -138,6 +141,7 @@ def fit(cfg, eps, iters, out, t_collect=0.0):
     wall = time.perf_counter() - t1
     gpu = torch.cuda.max_memory_allocated() / 2**20 if dev == "cuda" else 0
     print(f"fit wall {wall:.0f} s ({iters / wall:.1f} it/s), gpu peak {gpu:.0f} MB (allocated)")
+    r = r or evaluate(iters)
     print("FINAL (val, mm): " + ", ".join(f"{n} {v * (1e3 if 'err' in n else 1):.3f}" for n, v in sorted(r.items())))
 
 

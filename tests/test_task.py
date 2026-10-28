@@ -7,10 +7,9 @@ from supermimic_yai import seeds
 from supermimic_yai.arm import load_arm
 from supermimic_yai.env import AssemblyEnv
 from supermimic_yai.product import load_product
-from supermimic_yai.scripted import run_token
-from supermimic_yai.startbank import collect_start_states
 from supermimic_yai import task
-from supermimic_yai.scripted import _yaw
+from supermimic_yai.scripted import _yaw, run_token
+from supermimic_yai.startbank import collect_start_states
 from supermimic_yai.task import (TokenEpisode, involved_context, reward, success, token_goal, token_state)
 from supermimic_yai.tokens import load_recipe
 
@@ -98,7 +97,7 @@ def test_episode_terminal_kinds(a):
         s, r, done, info = ep.step(hold)
         assert not done and info == {}
     s, r, done, info = ep.step(hold)
-    assert done and info["terminal_kind"] == "timeout"
+    assert not done and info["terminal_kind"] == "timeout"  # truncation, not termination
     # success: start from the state after a scripted ALIGN
     env.restore(k)
     run_token(env, tok, k.held)
