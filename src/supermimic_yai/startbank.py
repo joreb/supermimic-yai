@@ -47,8 +47,13 @@ def _ctx_from(d):
                       tuple(d["joint_offsets"]))
 
 
+def _npz(path):
+    path = Path(path)
+    return path if path.suffix == ".npz" else path.with_name(path.name + ".npz")
+
+
 def save_bank(path, states):
-    path = Path(path).with_suffix(".npz")
+    path = _npz(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez(path, **{f"s{i}": s.state for i, s in enumerate(states)})
     meta = [{"product": s.product, "step": s.step, "token": s.token, "held": s.held, "context": _ctx_json(s.context)}
@@ -57,9 +62,9 @@ def save_bank(path, states):
 
 
 def load_bank(path):
-    path = Path(path).with_suffix(".npz")
+    path = _npz(path)
     meta = json.loads(path.with_suffix(".json").read_text())
-    with np.load(path.with_suffix(".npz")) as z:
+    with np.load(path) as z:
         return [StartState(m["product"], m["step"], m["token"], m["held"], _ctx_from(m["context"]), z[f"s{i}"])
                 for i, m in enumerate(meta)]
 

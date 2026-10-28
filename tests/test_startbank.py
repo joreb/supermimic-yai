@@ -70,3 +70,5 @@ def test_dotted_bank_path(a, tmp_path):
         save_bank(tmp_path / name, a[2])
         assert len(load_bank(tmp_path / name)) == len(a[2])
     assert (tmp_path / "x.v1.json").exists()
+    save_bank(tmp_path / "y.v2", a[2][:1])  # a different dotted name must not overwrite y.v1
+    assert len(load_bank(tmp_path / "y.v1")) == len(a[2])
