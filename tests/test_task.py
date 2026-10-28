@@ -38,7 +38,7 @@ def test_state_fixed_size():
         for kind in ("GRASP", "INSERT"):
             tok = next(t for t in recipe.steps if t.kind == kind)
             held = None if kind == "GRASP" else tok.part
-            s = token_state(obs, env, tok, held)
+            s = token_state(obs, env, tok, held, obs["part_poses"][tok.part][2])
             sizes.add(s.shape)
             assert np.isfinite(s).all()
         assert token_goal(tok, product).shape == (3,)
@@ -59,6 +59,15 @@ def test_success_matches_scripted(a):
         res, held = run_token(env, tok, k.held)
         s = token_state(env.obs(), env, tok, held if tok.kind == "GRASP" else k.held, z0)
         assert res.ok and success(tok.kind, s, goal), (k.step, tok.kind)
+
+
+def test_grasp_requires_z0():
+    product, recipe = _load("product_a")
+    env = AssemblyEnv(ARM, product)
+    obs, _ = env.reset(seed=0)
+    tok = next(t for t in recipe.steps if t.kind == "GRASP")
+    with pytest.raises(ValueError, match="z0"):
+        token_state(obs, env, tok, None)
 
 
 def test_reward_pure(a):

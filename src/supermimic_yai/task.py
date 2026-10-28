@@ -56,8 +56,10 @@ def token_state(obs, env, tok, held, z0=None) -> np.ndarray:
     ee, part = obs["ee_pose"], held or tok.part
     pose = obs["part_poses"][part]
     if tok.kind == "GRASP":
+        if z0 is None:
+            raise ValueError("GRASP needs z0, the part's z at token start (lift baseline)")
         target = _pose(_mat(pose) @ _mat(tok.grasp_pose))
-        flag = fingers_hold(env, part) and pose[2] - (pose[2] if z0 is None else z0) >= GRASP_LIFT
+        flag = fingers_hold(env, part) and pose[2] - z0 >= GRASP_LIFT
     else:
         target = np.asarray(resolve_target(tok.target, env.product), dtype=np.float64)
         flag = held is not None and fingers_hold(env, held)
