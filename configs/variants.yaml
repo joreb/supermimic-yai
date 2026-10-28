@@ -1,0 +1,8 @@
+# Product A geometry variants: uniform ranges (m). Hole diameter = peg_d + clearance.
+# peg_len stops at 0.045 so B (0.050) and C (0.060) lie outside (ruling P4).
+peg_d: [0.016, 0.024]
+clearance: [0.0015, 0.0025]
+peg_len: [0.030, 0.045]
+base_t: [0.008, 0.012]
+cover_t: [0.004, 0.008]
+spacing: [0.05, 0.07]

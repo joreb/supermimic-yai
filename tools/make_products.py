@@ -31,9 +31,9 @@ def to_mesh(man):
     return trimesh.Trimesh(mm.vert_properties[:, :3].astype(float), mm.tri_verts, process=True)
 
 
-def write(name, tol, parts, starts, novelty=None):
+def write(name, tol, parts, starts, novelty=None, out=None):
     """parts: {name: (manifold, fixed)}; starts: {name: (x, y)} for non-fixed parts."""
-    root = OUT / name
+    root = (out or OUT) / name
     (root / "parts").mkdir(parents=True, exist_ok=True)
     spec = {}
     for pn, (man, fixed) in parts.items():
@@ -55,17 +55,26 @@ def write(name, tol, parts, starts, novelty=None):
 TOL = {"pos": 0.005, "rot_deg": 5.0}
 
 
-def product_a():
-    base = box(.12, .06, 0, .01) - hole(.022, 0, .01, CX - .03) - hole(.022, 0, .01, CX + .03)
-    cover = (box(.10, .05, .01, .016) - hole(.022, .01, .016, CX - .03)
-             - hole(.022, .01, .016, CX + .03))
-    write("product_a", TOL, {
+A_PARAMS = dict(peg_d=.020, clearance=.002, peg_len=.040, base_t=.010, cover_t=.006, spacing=.060)
+
+
+def product_a_params(peg_d, clearance, peg_len, base_t, cover_t, spacing,
+                     name="product_a", out=None, novelty=None):
+    hd, s = round(peg_d + clearance, 9), spacing / 2
+    top = round(base_t + cover_t, 9)
+    base = (box(.12, .06, 0, base_t) - hole(hd, 0, base_t, CX - s) - hole(hd, 0, base_t, CX + s))
+    cover = (box(.10, .05, base_t, top) - hole(hd, base_t, top, CX - s)
+             - hole(hd, base_t, top, CX + s))
+    write(name, TOL, {
         "base": (base, True),
-        "peg1": (cyl(.02, 0, .04, CX - .03), False),
-        "peg2": (cyl(.02, 0, .04, CX + .03), False),
+        "peg1": (cyl(peg_d, 0, peg_len, CX - s), False),
+        "peg2": (cyl(peg_d, 0, peg_len, CX + s), False),
         "cover": (cover, False),
-    }, {"peg1": (.42, -.22), "peg2": (.58, -.22), "cover": (.5, .22)},
-        "Baseline: two pegs through a base, then a cover over both.")
+    }, {"peg1": (.42, -.22), "peg2": (.58, -.22), "cover": (.5, .22)}, novelty, out)
+
+
+def product_a():
+    product_a_params(**A_PARAMS, novelty="Baseline: two pegs through a base, then a cover over both.")
 
 
 def product_b():
@@ -81,7 +90,8 @@ def product_b():
         "peg": (cyl(.02, 0, .05), False),
         "cap": (cap, False),
     }, {"block": (.40, .22), "cap": (.60, .22), "peg": (.5, -.22)},
-        "pocket placement and a capped stack; neither join appears in A")
+        "pocket placement and a capped stack; neither join appears in A\n"
+        "peg length 50 mm, outside the 30-45 mm range of A's variants")
 
 
 def product_c():
@@ -91,7 +101,8 @@ def product_c():
         parts[n] = (cyl(d, z, z + .01) - hole(.022, z, z + .01), False)
     write("product_c", TOL, parts,
           {"peg": (.5, -.22), "ring_l": (.38, .22), "ring_m": (.5, .22), "ring_s": (.62, .22)},
-          "three-high stack whose order is fixed by size; A has no stacking deeper than one")
+          "three-high stack whose order is fixed by size; A has no stacking deeper than one\n"
+          "peg length 60 mm, outside the 30-45 mm range of A's variants")
 
 
 if __name__ == "__main__":
