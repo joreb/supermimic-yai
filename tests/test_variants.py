@@ -74,5 +74,22 @@ def test_deterministic(made, tmp_path):
 def test_variant_recipe_succeeds(made):
     # a_v002 / a_v003 are kept by `make_variants.py --n 32 --seed 0`; others are legitimately rejected
     for i in (2, 3):
-        name, ok, detail = make_variants.check(str(made / f"a_v{i:03d}"))
+        name, ok, detail = make_variants.check((str(made / f"a_v{i:03d}"), 0))
         assert ok, (name, detail)
+
+
+def test_peg_grasp_z():
+    assert make_variants.peg_grasp_z(make_products.A_PARAMS) == 0
+    assert make_variants.peg_grasp_z({**make_products.A_PARAMS, "peg_len": .030, "base_t": .012}) == 0.005
+    # A's recipe is reproduced exactly
+    r = make_variants.variant_recipe("product_a", make_products.A_PARAMS)
+    assert r == json.loads((ROOT / "recipes" / "product_a.json").read_text())
+
+
+def test_out_guard(tmp_path):
+    d = tmp_path / "precious"
+    d.mkdir()
+    (d / "f.txt").write_text("x")
+    with pytest.raises(SystemExit):
+        make_variants.make(1, 0, d, verify=False)
+    assert (d / "f.txt").read_text() == "x"
