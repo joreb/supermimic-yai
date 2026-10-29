@@ -83,3 +83,12 @@ def wm_loss(model, batch, k, metrics=False):
                     out[f"{name}/{kn}"] = held[m].mean().item()
                     out[f"{name.replace('err', 'err_pt')}/{kn}"] = pt[m].mean().item()
     return loss, out
+
+
+def load_wm(path, s_dim, a_dim, c_dim, device="cpu"):
+    """Width/depth are read off the state dict. -> eval-mode WorldModel on device."""
+    st = torch.load(path, map_location="cpu")
+    lin = [k for k in st if k.startswith("net.") and k.endswith("weight")]
+    model = WorldModel(s_dim, a_dim, c_dim, len(TOKEN_KINDS), st[lin[0]].shape[0], len(lin) - 1)
+    model.load_state_dict(st)
+    return model.to(device).eval()

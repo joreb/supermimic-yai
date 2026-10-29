@@ -7,10 +7,11 @@ import argparse
 
 import numpy as np
 import torch
-from fit_wm import buffer, load_eps, split
+from fit_wm import split
 
+from supermimic_yai.replay import buffer_from, load_episodes
 from supermimic_yai.task import TOKEN_KINDS
-from supermimic_yai.wm import WorldModel, gate_errors, rollout
+from supermimic_yai.wm import gate_errors, load_wm, rollout
 
 
 def main():
@@ -19,20 +20,16 @@ def main():
     ap.add_argument("--episodes", default="runs/wm/episodes.npz")
     ap.add_argument("--H", type=int, nargs="+", default=[8, 16, 32])
     a = ap.parse_args()
-    eps = load_eps(a.episodes)
+    eps = load_episodes(a.episodes)
     val, _ = split(eps, np.random.default_rng(0))
     sd, ad, cd = val[0]["s"].shape[1], val[0]["a"].shape[1], val[0]["ctx"].shape[0]
-    st = torch.load(a.model, map_location="cpu")
-    lin = [k for k in st if k.startswith("net.") and k.endswith("weight")]
-    model = WorldModel(sd, ad, cd, len(TOKEN_KINDS), st[lin[0]].shape[0], len(lin) - 1)
-    model.load_state_dict(st)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(dev).eval()
+    model = load_wm(a.model, sd, ad, cd, dev)
     n = (sd - 17) // 2
     print(f"held-out episodes {len(val)}; errors in mm, pt = part-to-target, held = held part rel EE")
     print("H    windows  " + "  ".join(f"{k}:pt/held" for k in TOKEN_KINDS))
     for H in a.H:
-        buf = buffer(val, H)
+        buf = buffer_from(val)
         rows = buf._starts(H)
         idx = (rows[:, None] + np.arange(H)) % buf.cap
         tot = {k: [[], []] for k in range(len(TOKEN_KINDS))}

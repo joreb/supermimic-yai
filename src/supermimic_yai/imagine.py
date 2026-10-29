@@ -103,10 +103,12 @@ def critic_loss(critic, s, goal, ctx, kind, targets):
 
 
 def policy_step(actor, opt, loss, clip, clip_elem):
+    """-> global grad norm before clipping."""
     opt.zero_grad(set_to_none=True)
     loss.backward()
-    torch.nn.utils.clip_grad_norm_(actor.parameters(), clip)
+    norm = torch.nn.utils.clip_grad_norm_(actor.parameters(), clip)
     for p in actor.parameters():
         if p.grad is not None:
             p.grad.clamp_(-clip_elem, clip_elem)
     opt.step()
+    return norm.item()

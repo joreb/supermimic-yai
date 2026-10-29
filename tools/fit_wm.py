@@ -9,26 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-
-def save_eps(path, eps):
-    d = {k: np.concatenate([e[k] for e in eps]) for k in ("s", "a", "r", "done", "unstable")}
-    d["len"] = np.array([len(e["a"]) for e in eps])
-    for k in ("goal", "ctx"):
-        d[k] = np.stack([e[k] for e in eps])
-    d["kind"] = np.array([e["kind"] for e in eps])
-    d["terminal_kind"] = np.array([e["terminal_kind"] for e in eps])
-    np.savez_compressed(path, **d)
-
-
-def load_eps(path):
-    d, eps, i = dict(np.load(path)), [], 0  # dict: an NpzFile re-decompresses on every access
-    for j, T in enumerate(d["len"]):
-        sl, s0 = slice(i, i + T), i + j
-        eps.append({"s": d["s"][s0:s0 + T + 1], **{k: d[k][sl] for k in ("a", "r", "done", "unstable")},
-                    "goal": d["goal"][j], "ctx": d["ctx"][j], "kind": int(d["kind"][j]),
-                    "terminal_kind": str(d["terminal_kind"][j])})
-        i += T
-    return eps
+from supermimic_yai.replay import buffer_from, load_episodes, save_episodes
 
 
 def auc(score, y):
@@ -43,15 +24,6 @@ def split(eps, rng):
     perm = rng.permutation(len(eps))
     nv = max(1, len(eps) // 10)
     return [eps[i] for i in perm[:nv]], [eps[i] for i in perm[nv:]]
-
-
-def buffer(eps, k):
-    from supermimic_yai.replay import ReplayBuffer
-    sd, ad = eps[0]["s"].shape[1], eps[0]["a"].shape[1]
-    buf = ReplayBuffer(sum(len(e["a"]) for e in eps), sd, ad, eps[0]["goal"].shape[0], eps[0]["ctx"].shape[0])
-    for e in eps:
-        buf.add(e)
-    return buf
 
 
 def main():
@@ -72,12 +44,12 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
     if a.reuse:
-        eps = load_eps(out / "episodes.npz")
+        eps = load_episodes(out / "episodes.npz")
     else:
         from supermimic_yai.collect import Collector
         with Collector(cfg, a.arm, a.products, a.bank or out / "bank.npz") as c:
             eps = c.collect(a.episodes, None, rng_seed=0)
-        save_eps(out / "episodes.npz", eps)
+        save_episodes(out / "episodes.npz", eps)
     t_collect = time.perf_counter() - t0
     print(f"{len(eps)} episodes, {sum(len(e['a']) for e in eps)} transitions, collect/load {t_collect:.0f} s", flush=True)
     fit(cfg, eps, a.iters, out, t_collect)
@@ -96,7 +68,7 @@ def fit(cfg, eps, iters, out, t_collect=0.0):
         torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = True  # no-op on Pascal
     rng = np.random.default_rng(0)
     val, train = split(eps, rng)
-    tb, vb = buffer(train, k), buffer(val, k)
+    tb, vb = buffer_from(train), buffer_from(val)
     sd, ad, cd = train[0]["s"].shape[1], train[0]["a"].shape[1], train[0]["ctx"].shape[0]
     model = WorldModel(sd, ad, cd, len(TOKEN_KINDS), w["width"], w["depth"]).to(dev)
     ok = tb.stable_rows()

@@ -84,7 +84,8 @@ def main(argv=None):
     from supermimic_yai.tokens import load_recipe
     ap = argparse.ArgumentParser(description="Snapshot start states for several products into one bank.")
     ap.add_argument("--products", nargs="+", required=True)
-    ap.add_argument("--seeds", type=int, required=True, help="number of TRAIN seeds per product")
+    ap.add_argument("--seeds", type=int, required=True, help="number of seeds per product")
+    ap.add_argument("--seed-range", choices=["train", "eval"], default="train")
     ap.add_argument("--out", required=True, help="bank path, ending in .npz")
     ap.add_argument("--arm", required=True, help="arm directory")
     a = ap.parse_args(argv)
@@ -92,7 +93,7 @@ def main(argv=None):
     for d in a.products:
         product = load_product(Path(d))
         recipe = load_recipe(resolve_recipe(d), product, arm)
-        states += collect_start_states(arm, product, recipe, seedmod.TRAIN[:a.seeds])
+        states += collect_start_states(arm, product, recipe, getattr(seedmod, a.seed_range.upper())[:a.seeds])
         print(f"{product.name}: {len(states)} states so far", flush=True)
     save_bank(a.out, states)
 

@@ -51,3 +51,32 @@ class ReplayBuffer:
         return {"s": np.concatenate([self.s[rows], self.s2[last][:, None]], 1), "a": self.a[rows], "r": self.r[rows],
                 "done": self.done[rows], "unstable": self.unstable[rows],
                 "goal": self.goal[i], "ctx": self.ctx[i], "kind": self.kind[i]}
+
+
+def save_episodes(path, eps):
+    d = {k: np.concatenate([e[k] for e in eps]) for k in ("s", "a", "r", "done", "unstable")}
+    d["len"] = np.array([len(e["a"]) for e in eps])
+    for k in ("goal", "ctx"):
+        d[k] = np.stack([e[k] for e in eps])
+    d["kind"] = np.array([e["kind"] for e in eps])
+    d["terminal_kind"] = np.array([e["terminal_kind"] for e in eps])
+    np.savez_compressed(path, **d)
+
+
+def load_episodes(path):
+    d, eps, i = dict(np.load(path)), [], 0  # dict: an NpzFile re-decompresses on every access
+    for j, T in enumerate(d["len"]):
+        sl, s0 = slice(i, i + T), i + j
+        eps.append({"s": d["s"][s0:s0 + T + 1], **{k: d[k][sl] for k in ("a", "r", "done", "unstable")},
+                    "goal": d["goal"][j], "ctx": d["ctx"][j], "kind": int(d["kind"][j]),
+                    "terminal_kind": str(d["terminal_kind"][j])})
+        i += T
+    return eps
+
+
+def buffer_from(eps):
+    sd, ad = eps[0]["s"].shape[1], eps[0]["a"].shape[1]
+    buf = ReplayBuffer(sum(len(e["a"]) for e in eps), sd, ad, eps[0]["goal"].shape[0], eps[0]["ctx"].shape[0])
+    for e in eps:
+        buf.add(e)
+    return buf

@@ -142,13 +142,13 @@ def _probe(args):
 
 
 class Collector:
-    def __init__(self, cfg, arm_dir, dirs, bank_path):
+    def __init__(self, cfg, arm_dir, dirs, bank_path, kinds=None):
         self.noises, self.workers = cfg["collect"]["action_noise"], cfg["collect"]["workers"]
         products = {json.loads((Path(d) / "assembly.json").read_text())["name"]: (str(d), str(resolve_recipe(d)))
                     for d in dirs}
-        self.bank = [s for s in load_bank(bank_path) if s.product in products]
+        self.bank = [s for s in load_bank(bank_path) if s.product in products and (kinds is None or s.token in kinds)]
         if not self.bank:
-            raise ValueError("start-state bank has no states for these products")
+            raise ValueError("start-state bank has no states for these products/kinds")
         self.pool = mp.get_context("spawn").Pool(
             self.workers, _init, (str(arm_dir), products, cfg["collect"]["envs_per_worker"], cfg["action_scale"]))
 

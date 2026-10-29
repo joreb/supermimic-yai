@@ -72,3 +72,14 @@ def test_dotted_bank_path(a, tmp_path):
     assert (tmp_path / "x.v1.json").exists()
     save_bank(tmp_path / "y.v2", a[2][:1])  # a different dotted name must not overwrite y.v1
     assert len(load_bank(tmp_path / "y.v1")) == len(a[2])
+
+
+def test_seed_range_eval(tmp_path):
+    from supermimic_yai import seeds
+    from supermimic_yai.context import sample_context
+    from supermimic_yai.startbank import main
+    main(["--products", str(ROOT / "products" / "product_a"), "--seeds", "1", "--seed-range", "eval",
+          "--arm", str(ROOT / "arms" / "panda"), "--out", str(tmp_path / "b.npz")])
+    product = load_product(ROOT / "products" / "product_a")
+    ctx = sample_context(np.random.default_rng(seeds.EVAL[0]), product, AssemblyEnv(ARM, product).n_arm)
+    assert load_bank(tmp_path / "b")[0].context == ctx
