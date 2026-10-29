@@ -25,6 +25,10 @@ class Learner:
         ok = buf.stable_rows()
         self.actor.set_norm(buf.s[ok])
         self.critic.set_norm(buf.s[ok], buf.ctx[ok])
+        x = np.concatenate([buf.s[ok], buf.s2[ok]])  # imagined states stay within the data range + 5% of it
+        lo, hi = x.min(0), x.max(0)
+        m = 0.05 * (hi - lo)
+        self.lo, self.hi = (torch.as_tensor(v, dtype=torch.float32, device=self.dev) for v in (lo - m, hi + m))
 
     def _sample(self, buf, rng, kinds):
         rows = np.flatnonzero(~buf.unstable[:buf.size] & np.isin(buf.kind[:buf.size], kinds))
@@ -35,7 +39,7 @@ class Learner:
     def update(self, buf, rng, kinds) -> dict:
         p, c = self.p, self.c
         _, s0, goal, ctx, kind = self._sample(buf, rng, kinds)
-        out = imagine(self.wm, self.actor, s0, goal, ctx, kind, p["horizon"])
+        out = imagine(self.wm, self.actor, s0, goal, ctx, kind, p["horizon"], self.lo, self.hi)
         loss = policy_loss(out, self.critic, goal, ctx, kind, p["gamma"])
         gn = policy_step(self.actor, self.opt_a, loss, p["grad_clip"], p["grad_clip_elem"])
         B, H = out["r"].shape
@@ -52,7 +56,8 @@ class Learner:
                 self.opt_c.step()
         for s in self.sched:
             s.step()
-        return {"imagined_return": -loss.item(), "policy_loss": loss.item(), "critic_loss": cl.item(), "grad_norm": gn}
+        rs = (out["c"][:, :H] * out["r"]).sum(1).mean().item()  # bounded by H * r_max, unlike the bootstrapped return
+        return {"imagined_reward_sum": rs, "imagined_return": -loss.item(), "policy_loss": loss.item(), "critic_loss": cl.item(), "grad_norm": gn}
 
     def bc_update(self, buf, rng, kinds) -> dict:
         i, s, goal, _, kind = self._sample(buf, rng, kinds)

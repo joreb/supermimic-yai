@@ -46,7 +46,7 @@ def test_learner_update_improves_imagined_return():
     before, rng = ret(), np.random.default_rng(0)
     for _ in range(50):
         m = lr.update(buf, rng, (0, 1, 2))
-    assert set(m) == {"imagined_return", "policy_loss", "critic_loss", "grad_norm"}
+    assert set(m) == {"imagined_reward_sum", "imagined_return", "policy_loss", "critic_loss", "grad_norm"}
     assert ret() > before
 
 
@@ -66,3 +66,16 @@ def test_bc_update_reduces_mse():
     for _ in range(200):
         last = lr.bc_update(buf, rng, (0, 1, 2))["bc_loss"]
     assert last < 0.5 * first
+
+
+def test_imagined_objective_bounded():
+    """A wildly drifting world model must not yield rewards above the env's physical maximum (1/step)."""
+    buf = toy_buf()
+    lr = learner(buf)
+    lr.wm.ds_sd.fill_(50.0)  # huge residuals: unclamped states leave the physical range within a few steps
+    t = lambda x, dt=torch.float32: torch.as_tensor(x[:16], dtype=dt)  # noqa: E731
+    s0, goal, ctx, kind = t(buf.s), t(buf.goal), t(buf.ctx), t(buf.kind, torch.int64)
+    out = imagine(lr.wm, lr.actor, s0, goal, ctx, kind, 6, *([lr.lo, lr.hi] if hasattr(lr, "lo") else []))
+    assert out["r"].max() <= 1.0 and out["r"].sum(1).max() <= 6 * 1.0
+    assert out["c"].min() >= 0 and out["c"].max() <= 1
+    assert out["r"].min() > -50  # finite and bounded below too

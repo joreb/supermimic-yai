@@ -9,6 +9,18 @@ from supermimic_yai.scripted import ALIGN_POS_TOL, ALIGN_ROT_TOL
 from supermimic_yai.task import _EXTRA, FORCE_SCALE
 
 
+# Physical bounds of the env reward (task.reward): flag in {0,1}; relative distances < D_MAX [m] (arm reach);
+# INSERT per-step progress is a fraction of the depth, |.| <= 1; force ratio f < 2 (the env terminates above 2).
+D_MAX, F_MAX, R_MAX = 2.0, 2.0, 1.0
+
+
+def reward_range(kind, goal):
+    """(lo, hi) per row that reward_t can produce: GRASP [-D_MAX, 1], ALIGN [-(D_MAX + 0.05 pi), 0], INSERT [-1 - 0.1 mf (F_MAX - 1), 1]."""
+    lo = torch.stack([torch.full_like(goal[:, 0], -D_MAX), torch.full_like(goal[:, 0], -D_MAX - 0.05 * torch.pi),
+                      -1 - 0.1 * goal[:, 1] * FORCE_SCALE * (F_MAX - 1)], 1).gather(1, kind[:, None])[:, 0]
+    return lo, torch.where(kind == 1, torch.zeros_like(lo), torch.full_like(lo, R_MAX))
+
+
 def _slices(s):
     n = (s.shape[-1] - _EXTRA) // 2
     return s[..., 2 * n + 1:2 * n + 8], s[..., 2 * n + 8], s[..., 2 * n + 9:2 * n + 16], s[..., 2 * n + 16]
@@ -29,12 +41,14 @@ def _align_err(s):
 
 def reward_t(kind, s, s_next, goal):
     part, flag, tgt, f = _slices(s_next)
+    flag, f = flag.clamp(0, 1), f.clamp(0, F_MAX)  # WM outputs can leave the physical range; the env's cannot
     xy, yaw = _align_err(s_next)
+    xy = xy.clamp_max(D_MAX)
     rem = lambda x: _slices(x)[0][..., 2] - _slices(x)[2][..., 2]  # noqa: E731
     mf = goal[:, 1] * FORCE_SCALE
     depth = torch.where(kind == 2, goal[:, 0], 1.0)  # safe denominator: zero goals would NaN the where-grads
-    r = [-tgt[..., :3].norm(dim=-1) + flag, -(xy + 0.05 * yaw),
-         (rem(s) - rem(s_next)) / depth - 0.1 * (f * mf - mf).clamp_min(0)]
+    r = [-tgt[..., :3].norm(dim=-1).clamp_max(D_MAX) + flag, -(xy + 0.05 * yaw),
+         ((rem(s) - rem(s_next)) / depth).clamp(-1, 1) - 0.1 * (f * mf - mf).clamp_min(0)]
     return torch.where(kind == 0, r[0], torch.where(kind == 1, r[1], r[2]))
 
 
@@ -46,21 +60,24 @@ def success_t(kind, s, goal):
     return torch.where(kind == 0, ok[0], torch.where(kind == 1, ok[1], ok[2]))
 
 
-def imagine(wm, actor, s0, goal, ctx, kind, H):
-    """-> {s (B,H+1,s_dim), r (B,H), d (B,H), c (B,H+1)}. WM params get no grad; states and actions do."""
+def imagine(wm, actor, s0, goal, ctx, kind, H, lo=None, hi=None):
+    """-> {s (B,H+1,s_dim), r (B,H), d (B,H), c (B,H+1)}. WM params get no grad; states and actions do.
+    lo/hi (s_dim,): per-dimension clamp on every predicted state, keeping the rollout inside the data range."""
     flags = [p.requires_grad for p in wm.parameters()]
     wm.requires_grad_(False)
     try:
         s, S, R, D = s0, [s0], [], []
         for _ in range(H):
             s2, d = wm.step(s, actor(s, goal, kind), ctx, kind)
+            if lo is not None:
+                s2 = torch.maximum(torch.minimum(s2, hi), lo)
             R.append(reward_t(kind, s, s2, goal)), D.append(d), S.append(s2)
             s = s2
     finally:
         for p, f in zip(wm.parameters(), flags):
             p.requires_grad_(f)
     d = torch.stack(D, 1)
-    c = torch.cat([torch.ones_like(d[:, :1]), torch.cumprod(1 - d, 1)], 1)
+    c = torch.cat([torch.ones_like(d[:, :1]), torch.cumprod(1 - d.clamp(0, 1), 1)], 1)
     return {"s": torch.stack(S, 1), "r": torch.stack(R, 1), "d": d, "c": c}
 
 
