@@ -21,7 +21,7 @@ def save_eps(path, eps):
 
 
 def load_eps(path):
-    d, eps, i = np.load(path), [], 0
+    d, eps, i = dict(np.load(path)), [], 0  # dict: an NpzFile re-decompresses on every access
     for j, T in enumerate(d["len"]):
         sl, s0 = slice(i, i + T), i + j
         eps.append({"s": d["s"][s0:s0 + T + 1], **{k: d[k][sl] for k in ("a", "r", "done", "unstable")},
