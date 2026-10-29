@@ -87,13 +87,24 @@ def _values(out, critic, goal, ctx, kind):
     return critic(out["s"].reshape(B * T, sd), rep(goal), rep(ctx), rep(kind)).reshape(B, T)
 
 
+def value_range(kind, goal, gamma):
+    """(lo, hi) per row of any discounted return: r_range / (1 - gamma). Critic output and targets are clamped to it."""
+    lo, hi = reward_range(kind, goal)
+    return lo / (1 - gamma), hi / (1 - gamma)
+
+
+def _clamped_values(out, critic, goal, ctx, kind, gamma):
+    lo, hi = value_range(kind, goal, gamma)
+    return torch.maximum(torch.minimum(_values(out, critic, goal, ctx, kind), hi[:, None]), lo[:, None])
+
+
 def policy_loss(out, critic, goal, ctx, kind, gamma):
     """Eq. 2: -mean_b sum_{t<H} gamma^t c_t r_t + gamma^H c_H V(s_H). Critic params get no grad (frozen inside)."""
     H = out["r"].shape[1]
     flags = [p.requires_grad for p in critic.parameters()]
     critic.requires_grad_(False)
     try:
-        V = _values(out, critic, goal, ctx, kind)
+        V = _clamped_values(out, critic, goal, ctx, kind, gamma)
     finally:
         for p, f in zip(critic.parameters(), flags):
             p.requires_grad_(f)
@@ -105,10 +116,12 @@ def policy_loss(out, critic, goal, ctx, kind, gamma):
 @torch.no_grad()
 def gae_targets(out, critic, goal, ctx, kind, gamma, lam):
     """R_t = r_t + gamma (1 - d_t)[(1 - lam) V_{t+1} + lam R_{t+1}], R_H = V_H -> (B,H)."""
-    V, H = _values(out, critic, goal, ctx, kind), out["r"].shape[1]
+    V, H = _clamped_values(out, critic, goal, ctx, kind, gamma), out["r"].shape[1]
+    lo, hi = value_range(kind, goal, gamma)
     R, T = V[:, H], []
     for t in reversed(range(H)):
         R = out["r"][:, t] + gamma * (1 - out["d"][:, t]) * ((1 - lam) * V[:, t + 1] + lam * R)
+        R = torch.maximum(torch.minimum(R, hi), lo)
         T.append(R)
     return torch.stack(T[::-1], 1).detach()
 

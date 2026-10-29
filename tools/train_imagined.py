@@ -31,13 +31,14 @@ def main():
     ap.add_argument("--logdir", default="runs/imagined")
     ap.add_argument("--eval-bank", default="runs/eval/bank_a.npz")
     ap.add_argument("--eval-episodes", type=int, default=200)
+    ap.add_argument("--no-ref", action="store_true", help="skip the scripted reference eval")
     ap.add_argument("--products", nargs="+", default=["products/product_a"])
     ap.add_argument("--arm", default="arms/panda")
     a = ap.parse_args()
     from supermimic_yai.config import load_config
     cfg, out = load_config(a.config), Path(a.logdir)
     out.mkdir(parents=True, exist_ok=True)
-    ref = {k: evaluate(cfg, a.arm, a.products, a.eval_bank, k, a.eval_episodes, None) for k in a.kinds}
+    ref = {k: evaluate(cfg, a.arm, a.products, a.eval_bank, k, a.eval_episodes, None) for k in a.kinds if not a.no_ref}
     for k, (sr, cnt) in ref.items():
         print(f"scripted {k}: success {sr:.3f} {cnt}", flush=True)
 
@@ -68,9 +69,11 @@ def main():
     for it in range(1, a.iters + 1):
         m = L.update(buf, rng, kinds)
         curve.append(m["imagined_return"])
-        over = over + 1 if m["imagined_reward_sum"] > bound + 1e-3 else 0
+        bad = m["imagined_reward_sum"] > bound + 1e-3 or not m["v_lo"] <= m["v_mean"] <= m["v_hi"]
+        over = over + 1 if bad else 0
         if over >= 20:
-            print(f"ABORT it {it}: imagined reward sum {m['imagined_reward_sum']:.3g} > H*r_max = {bound} for 20 iterations", flush=True)
+            print(f"ABORT it {it}: reward sum {m['imagined_reward_sum']:.3g} (max {bound}) or mean V {m['v_mean']:.3g} "
+                  f"(range {m['v_lo']:.3g}..{m['v_hi']:.3g}) out of bounds for 20 iterations", flush=True)
             raise SystemExit(1)
         if it % 50 == 0:
             tw.add_scalar(f"policy/imagined_return/{name}", m["imagined_return"], it)
@@ -86,10 +89,11 @@ def main():
     torch.save(L.actor.state_dict(), out / "actor.pt")
     w = L.actor.export()
     save_actor_npz(out / "actor.npz", w)
-    print(f"imagined return start {np.mean(curve[:50]):.3f} end {np.mean(curve[-50:]):.3f}; train wall {train_wall:.0f} s")
+    if curve:
+        print(f"imagined return start {np.mean(curve[:50]):.3f} end {np.mean(curve[-50:]):.3f}; train wall {train_wall:.0f} s")
     for k in a.kinds:
         sr, cnt = evaluate(cfg, a.arm, a.products, a.eval_bank, k, a.eval_episodes, w)
-        print(f"learned {k}: success {sr:.3f} {cnt} | scripted {ref[k][0]:.3f} | ratio {sr / max(ref[k][0], 1e-9):.2f}")
+        print(f"learned {k}: success {sr:.3f} {cnt} | scripted {ref[k][0] if k in ref else float('nan'):.3f}")
     print(f"total wall {time.perf_counter() - t0:.0f} s")
 
 

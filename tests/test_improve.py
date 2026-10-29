@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from supermimic_yai.imagine import imagine, policy_loss
+from supermimic_yai.imagine import gae_targets, imagine, policy_loss, value_range
 from supermimic_yai.improve import Learner
 from supermimic_yai.replay import ReplayBuffer
 from supermimic_yai.wm import WorldModel
@@ -46,7 +46,7 @@ def test_learner_update_improves_imagined_return():
     before, rng = ret(), np.random.default_rng(0)
     for _ in range(50):
         m = lr.update(buf, rng, (0, 1, 2))
-    assert set(m) == {"imagined_reward_sum", "imagined_return", "policy_loss", "critic_loss", "grad_norm"}
+    assert set(m) == {"v_mean", "v_lo", "v_hi", "imagined_reward_sum", "imagined_return", "policy_loss", "critic_loss", "grad_norm"}
     assert ret() > before
 
 
@@ -79,3 +79,16 @@ def test_imagined_objective_bounded():
     assert out["r"].max() <= 1.0 and out["r"].sum(1).max() <= 6 * 1.0
     assert out["c"].min() >= 0 and out["c"].max() <= 1
     assert out["r"].min() > -50  # finite and bounded below too
+
+
+def test_critic_clamped_to_value_range():
+    buf = toy_buf()
+    lr = learner(buf)
+    t = lambda x, dt=torch.float32: torch.as_tensor(x[:16], dtype=dt)  # noqa: E731
+    s0, goal, ctx, kind = t(buf.s), t(buf.goal), t(buf.ctx), t(buf.kind, torch.int64)
+    out = imagine(lr.wm, lr.actor, s0, goal, ctx, kind, 6, lr.lo, lr.hi)
+    lr.critic.net[-1].bias.data.fill_(1e6)  # a diverged critic
+    lo, hi = value_range(kind, goal, 0.99)
+    tg = gae_targets(out, lr.critic, goal, ctx, kind, 0.99, 0.95)
+    assert (tg <= hi[:, None]).all() and (tg >= lo[:, None]).all()
+    assert -policy_loss(out, lr.critic, goal, ctx, kind, 0.99).item() <= hi.max().item() + 1e-3

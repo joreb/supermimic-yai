@@ -109,6 +109,7 @@ def test_gae_targets_detached_and_match_reference():
     _, _, critic = _nets()
     H, B = 3, 4
     s, goal, ctx, kind = _batch(B)
+    kind = torch.where(kind == 1, 0, kind)  # ALIGN rewards are <= 0; this test feeds positive ones
     out = {"s": torch.randn(B, H + 1, SD, requires_grad=True), "r": torch.randn(B, H), "d": torch.rand(B, H) * 0.3}
     tg = gae_targets(out, critic, goal, ctx, kind, 0.99, 0.95)
     assert tg.grad_fn is None and tg.shape == (B, H)

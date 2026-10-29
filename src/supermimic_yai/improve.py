@@ -4,7 +4,8 @@ import math
 import numpy as np
 import torch
 
-from supermimic_yai.imagine import critic_loss, gae_targets, imagine, policy_loss, policy_step
+from supermimic_yai.imagine import (_values, critic_loss, gae_targets, imagine, policy_loss, policy_step,
+                                    value_range)
 from supermimic_yai.policy import Actor, Critic
 from supermimic_yai.task import TOKEN_KINDS
 
@@ -56,8 +57,10 @@ class Learner:
                 self.opt_c.step()
         for s in self.sched:
             s.step()
+        with torch.no_grad():  # raw critic output vs the physical value range, for the abort check
+            v, (vlo, vhi) = _values(out, self.critic, goal, ctx, kind).mean().item(), value_range(kind, goal, p["gamma"])
         rs = (out["c"][:, :H] * out["r"]).sum(1).mean().item()  # bounded by H * r_max, unlike the bootstrapped return
-        return {"imagined_reward_sum": rs, "imagined_return": -loss.item(), "policy_loss": loss.item(), "critic_loss": cl.item(), "grad_norm": gn}
+        return {"v_mean": v, "v_lo": vlo.mean().item(), "v_hi": vhi.mean().item(), "imagined_reward_sum": rs, "imagined_return": -loss.item(), "policy_loss": loss.item(), "critic_loss": cl.item(), "grad_norm": gn}
 
     def bc_update(self, buf, rng, kinds) -> dict:
         i, s, goal, _, kind = self._sample(buf, rng, kinds)
