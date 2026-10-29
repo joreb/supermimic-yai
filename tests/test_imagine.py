@@ -48,6 +48,25 @@ def test_reward_twin_parity(collector):  # noqa: F811
         ref_r = [task.reward(name, a, b, gg) for a, b, gg in zip(S, S2, g.numpy())]
         assert np.allclose(reward_t(torch.as_tensor(kk), t(S), t(S2), g).numpy(), ref_r, atol=1e-5)
         assert (success_t(torch.as_tensor(kk), t(S), g).numpy() == np.array(ref_s)).all()
+    # force the branches real data may not hit: INSERT force above its limit, rotated held part
+    S2f = S2.copy()
+    n = (S.shape[1] - 17) // 2
+    S2f[:, 2 * n + 16] = 1 + np.random.default_rng(1).random(len(S))
+    ang = np.random.default_rng(2).uniform(0.05, 1.0, len(S))
+    qz = np.stack([np.cos(ang / 2), 0 * ang, 0 * ang, np.sin(ang / 2)], 1)
+    S2f[:, 2 * n + 4:2 * n + 8] = qz
+    g = G.copy()
+    g[:, 0], g[:, 1] = 0.01, 0.5
+    for k, name in enumerate(task.TOKEN_KINDS):
+        ref = np.array([task.reward(name, a, b, gg) for a, b, gg in zip(S, S2f, g)])
+        got = reward_t(torch.full((len(S),), k), torch.as_tensor(S), torch.as_tensor(S2f), torch.as_tensor(g))
+        assert np.allclose(got.numpy(), ref, atol=1e-5)
+        if name == "INSERT":  # penalty and yaw branches are active: differs from the no-penalty value
+            base = np.array([task.reward(name, a, np.where(np.arange(len(b)) == 2 * n + 16, 0, b), gg)
+                             for a, b, gg in zip(S, S2f, g)])
+            assert (ref != base).all()
+        if name == "ALIGN":
+            assert task._align_err(S2f[0])[1] > 0.04
     # mixed batch picks the matching branch
     kk = torch.as_tensor(K)
     got = reward_t(kk, torch.as_tensor(S), torch.as_tensor(S2), torch.as_tensor(G))
@@ -82,6 +101,7 @@ def test_policy_grad_reaches_first_action():
     out = imagine(wm, actor, s, goal, ctx, kind, 4)
     policy_loss(out, critic, goal, ctx, kind, 0.99).backward()
     assert all(p.grad is not None and p.grad.abs().sum() > 0 for p in actor.dec.parameters())
+    assert all(p.grad is None for p in critic.parameters())
     assert all(torch.isfinite(p.grad).all() for p in actor.parameters() if p.grad is not None)
 
 

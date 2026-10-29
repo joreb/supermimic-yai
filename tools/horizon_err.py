@@ -1,13 +1,13 @@
 """Held-out H-step world-model error. python tools/horizon_err.py --model runs/wm/model.pt --episodes runs/wm/episodes.npz --H 8 16 32
 
-Held-out = last 10 % of episodes (as fit_wm). Mean over every complete, stable H-window, per kind, in mm:
+Held-out = fit_wm's split (shared split(), default_rng(0)). Mean over every complete, stable H-window, per kind, in mm:
 part-to-target error (pt) and held-part error (held), seeded on logged actions.
 """
 import argparse
 
 import numpy as np
 import torch
-from fit_wm import buffer, load_eps
+from fit_wm import buffer, load_eps, split
 
 from supermimic_yai.task import TOKEN_KINDS
 from supermimic_yai.wm import WorldModel, gate_errors, rollout
@@ -20,7 +20,7 @@ def main():
     ap.add_argument("--H", type=int, nargs="+", default=[8, 16, 32])
     a = ap.parse_args()
     eps = load_eps(a.episodes)
-    val = eps[len(eps) - max(1, len(eps) // 10):]
+    val, _ = split(eps, np.random.default_rng(0))
     sd, ad, cd = val[0]["s"].shape[1], val[0]["a"].shape[1], val[0]["ctx"].shape[0]
     st = torch.load(a.model, map_location="cpu")
     lin = [k for k in st if k.startswith("net.") and k.endswith("weight")]

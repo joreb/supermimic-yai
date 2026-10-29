@@ -38,6 +38,13 @@ def auc(score, y):
     return float((r[y].sum() - p * (p + 1) / 2) / (p * (len(y) - p))) if 0 < p < len(y) else float("nan")
 
 
+def split(eps, rng):
+    """Held-out / train episodes; pass default_rng(0) to reproduce fit's split (consumes the rng's first draw)."""
+    perm = rng.permutation(len(eps))
+    nv = max(1, len(eps) // 10)
+    return [eps[i] for i in perm[:nv]], [eps[i] for i in perm[nv:]]
+
+
 def buffer(eps, k):
     from supermimic_yai.replay import ReplayBuffer
     sd, ad = eps[0]["s"].shape[1], eps[0]["a"].shape[1]
@@ -88,9 +95,7 @@ def fit(cfg, eps, iters, out, t_collect=0.0):
     if dev == "cuda":
         torch.backends.cuda.matmul.allow_tf32 = torch.backends.cudnn.allow_tf32 = True  # no-op on Pascal
     rng = np.random.default_rng(0)
-    perm = rng.permutation(len(eps))
-    nv = max(1, len(eps) // 10)
-    val, train = [eps[i] for i in perm[:nv]], [eps[i] for i in perm[nv:]]
+    val, train = split(eps, rng)
     tb, vb = buffer(train, k), buffer(val, k)
     sd, ad, cd = train[0]["s"].shape[1], train[0]["a"].shape[1], train[0]["ctx"].shape[0]
     model = WorldModel(sd, ad, cd, len(TOKEN_KINDS), w["width"], w["depth"]).to(dev)

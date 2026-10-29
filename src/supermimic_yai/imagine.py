@@ -71,9 +71,15 @@ def _values(out, critic, goal, ctx, kind):
 
 
 def policy_loss(out, critic, goal, ctx, kind, gamma):
-    """Eq. 2: -mean_b sum_{t<H} gamma^t c_t r_t + gamma^H c_H V(s_H). Only the actor should be stepped on it."""
+    """Eq. 2: -mean_b sum_{t<H} gamma^t c_t r_t + gamma^H c_H V(s_H). Critic params get no grad (frozen inside)."""
     H = out["r"].shape[1]
-    V = _values(out, critic, goal, ctx, kind)
+    flags = [p.requires_grad for p in critic.parameters()]
+    critic.requires_grad_(False)
+    try:
+        V = _values(out, critic, goal, ctx, kind)
+    finally:
+        for p, f in zip(critic.parameters(), flags):
+            p.requires_grad_(f)
     g = gamma ** torch.arange(H + 1, device=V.device, dtype=V.dtype)
     ret = (g[:H] * out["c"][:, :H] * out["r"]).sum(1) + g[H] * out["c"][:, H] * V[:, H]
     return -ret.mean()
