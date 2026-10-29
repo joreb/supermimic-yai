@@ -83,7 +83,8 @@ def main():
             tw.add_scalar("sys/it_per_s", it / (time.perf_counter() - t0), it)
             tw.add_scalar("sys/gpu_mem_mb", torch.cuda.max_memory_allocated() / 2**20 if dev == "cuda" else 0, it)
         if it % 500 == 0:
-            print(f"it {it} return {np.mean(curve[-50:]):.3f} rsum {m['imagined_reward_sum']:.2f} critic {m['critic_loss']:.4f} gn {m['grad_norm']:.2f}", flush=True)
+            save_actor_npz(out / f"actor_{it}.npz", L.actor.export())
+            print(f"it {it} return {np.mean(curve[-50:]):.3f} rsum {m['imagined_reward_sum']:.2f} held>.5 {m['held_frac']:.2f} critic {m['critic_loss']:.4f} gn {m['grad_norm']:.2f}", flush=True)
     tw.close()
     train_wall = time.perf_counter() - t0
     torch.save(L.actor.state_dict(), out / "actor.pt")

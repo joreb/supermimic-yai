@@ -59,8 +59,9 @@ class Learner:
             s.step()
         with torch.no_grad():  # raw critic output vs the physical value range, for the abort check
             v, (vlo, vhi) = _values(out, self.critic, goal, ctx, kind).mean().item(), value_range(kind, goal, p["gamma"])
+        held = (out["s"][:, 1:, (out["s"].shape[-1] - 17) // 2 * 2 + 8] > 0.5).float().mean().item()
         rs = (out["c"][:, :H] * out["r"]).sum(1).mean().item()  # bounded by H * r_max, unlike the bootstrapped return
-        return {"v_mean": v, "v_lo": vlo.mean().item(), "v_hi": vhi.mean().item(), "imagined_reward_sum": rs, "imagined_return": -loss.item(), "policy_loss": loss.item(), "critic_loss": cl.item(), "grad_norm": gn}
+        return {"held_frac": held, "v_mean": v, "v_lo": vlo.mean().item(), "v_hi": vhi.mean().item(), "imagined_reward_sum": rs, "imagined_return": -loss.item(), "policy_loss": loss.item(), "critic_loss": cl.item(), "grad_norm": gn}
 
     def bc_update(self, buf, rng, kinds) -> dict:
         i, s, goal, _, kind = self._sample(buf, rng, kinds)

@@ -21,6 +21,24 @@ def reward_range(kind, goal):
     return lo, torch.where(kind == 1, torch.zeros_like(lo), torch.full_like(lo, R_MAX))
 
 
+# Soft grip box on (gripper width, held-part position rel. EE). The env's held flag needs finger contacts (not in the
+# token state); the WM's flag head is unconstrained off-distribution and was exploited (closing ~2 cm away from the part).
+# Edges = 0.1/99.9 percentiles over all held=1 rows (s and s_next, GRASP+ALIGN+INSERT, Plan 2a seed episodes) widened
+# by a margin; each side is a sigmoid of width margin/3, so the box is 0.95 at a fitted edge and ~0 a few cm outside.
+GRIP_LO, GRIP_HI, GRIP_M = 0.0075, 0.0250, 0.0015  # gripper width [m]
+POS_LO, POS_HI, POS_M = (-0.0038, -0.0004, -0.0119), (0.0053, 0.0037, 0.0106), 0.003  # part pos rel. EE [m] (x, y, z)
+
+
+def grip_box_t(s):
+    n = (s.shape[-1] - _EXTRA) // 2
+    sg = torch.sigmoid
+    lo = torch.tensor((GRIP_LO, *POS_LO), dtype=s.dtype, device=s.device)
+    hi = torch.tensor((GRIP_HI, *POS_HI), dtype=s.dtype, device=s.device)
+    m = torch.tensor((GRIP_M, *(POS_M,) * 3), dtype=s.dtype, device=s.device)
+    x = torch.cat([s[..., 2 * n:2 * n + 1], s[..., 2 * n + 1:2 * n + 4]], -1)
+    return (sg(3 * (x - lo + m) / m) * sg(3 * (hi + m - x) / m)).prod(-1)
+
+
 def _slices(s):
     n = (s.shape[-1] - _EXTRA) // 2
     return s[..., 2 * n + 1:2 * n + 8], s[..., 2 * n + 8], s[..., 2 * n + 9:2 * n + 16], s[..., 2 * n + 16]
@@ -60,6 +78,13 @@ def success_t(kind, s, goal):
     return torch.where(kind == 0, ok[0], torch.where(kind == 1, ok[1], ok[2]))
 
 
+def _set_held(s):
+    """held := clamp(WM held, 0, 1) * grip_box(s): the WM judges lift/contact, the box blocks implausible grips."""
+    i = (s.shape[-1] - _EXTRA) // 2 * 2 + 8
+    new = s[..., i].clamp(0, 1) * grip_box_t(s)
+    return torch.cat([s[..., :i], new[..., None], s[..., i + 1:]], -1)
+
+
 def imagine(wm, actor, s0, goal, ctx, kind, H, lo=None, hi=None):
     """-> {s (B,H+1,s_dim), r (B,H), d (B,H), c (B,H+1)}. WM params get no grad; states and actions do.
     lo/hi (s_dim,): per-dimension clamp on every predicted state, keeping the rollout inside the data range."""
@@ -71,6 +96,7 @@ def imagine(wm, actor, s0, goal, ctx, kind, H, lo=None, hi=None):
             s2, d = wm.step(s, actor(s, goal, kind), ctx, kind)
             if lo is not None:
                 s2 = torch.maximum(torch.minimum(s2, hi), lo)
+            s2 = _set_held(s2)
             R.append(reward_t(kind, s, s2, goal)), D.append(d), S.append(s2)
             s = s2
     finally:

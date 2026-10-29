@@ -3,7 +3,7 @@ import pytest
 import torch
 
 from supermimic_yai import task
-from supermimic_yai.imagine import (critic_loss, gae_targets, imagine, policy_loss, policy_step, reward_t,
+from supermimic_yai.imagine import (grip_box_t, critic_loss, gae_targets, imagine, policy_loss, policy_step, reward_t,
                                     success_t)
 from supermimic_yai.policy import Actor, Critic
 from supermimic_yai.wm import WorldModel
@@ -122,3 +122,15 @@ def test_gae_targets_detached_and_match_reference():
         ref[:, t] = R
     assert np.allclose(tg.numpy(), ref, atol=1e-5)
     assert critic_loss(critic, out["s"][:, :H], goal, ctx, kind, tg).item() >= 0
+
+
+def test_grip_box_recall_and_regression(collector):  # noqa: F811
+    c, _, _ = collector
+    S = np.concatenate([np.concatenate([e["s"][:-1], e["s"][1:]]) for e in c.collect(12, None, rng_seed=1)])
+    n = (SD - 17) // 2
+    held = S[S[:, 2 * n + 8] > 0.5]
+    assert len(held) > 100
+    assert (grip_box_t(torch.as_tensor(held)) >= 0.5).double().mean() >= 0.98
+    s = torch.as_tensor(held[:1]).clone()
+    s[0, 2 * n + 1:2 * n + 4] = torch.tensor([0.02, 0.0, 0.0])  # closed gripper, part 2 cm outside the box
+    assert grip_box_t(s).item() < 0.05

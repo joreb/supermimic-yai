@@ -46,7 +46,7 @@ def test_learner_update_improves_imagined_return():
     before, rng = ret(), np.random.default_rng(0)
     for _ in range(50):
         m = lr.update(buf, rng, (0, 1, 2))
-    assert set(m) == {"v_mean", "v_lo", "v_hi", "imagined_reward_sum", "imagined_return", "policy_loss", "critic_loss", "grad_norm"}
+    assert set(m) == {"held_frac", "v_mean", "v_lo", "v_hi", "imagined_reward_sum", "imagined_return", "policy_loss", "critic_loss", "grad_norm"}
     assert ret() > before
 
 
