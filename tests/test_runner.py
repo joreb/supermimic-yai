@@ -110,3 +110,28 @@ def _wins(name, ctrl):
 @pytest.mark.parametrize("name", "abc")
 def test_scripted_through_runner_matches_execute(name):
     assert abs(_wins(name, R.LearnedController(None, 0.05)) - _wins(name, None)) <= 1
+
+
+def test_held_move_converges_when_part_slips_in_grip(monkeypatch):
+    """A part that yaws ~3.5 deg in the grip mid-move must still be driven to the target (tf is live, not stale)."""
+    import mujoco
+    from supermimic_yai import scripted as S
+    env, recipe = _setup()
+    held = None
+    for tok in recipe.steps[:4]:  # MOVE_TO, MOVE_TO, GRASP, RETREAT
+        res, held = run_token(env, tok, held)
+        assert res.ok
+    adr, tick, n = env.index.part_qpos_adr[held], S._Run.tick, [0]
+
+    def slip(self, *a, **k):
+        tick(self, *a, **k)
+        n[0] += 1
+        if n[0] == 10:
+            q = np.empty(4)
+            mujoco.mju_mulQuat(q, [np.cos(np.radians(1.75)), 0, 0, np.sin(np.radians(1.75))], env.data.qpos[adr + 3:adr + 7])
+            env.data.qpos[adr + 3:adr + 7] = q
+            mujoco.mj_forward(env.model, env.data)
+
+    monkeypatch.setattr(S._Run, "tick", slip)
+    res, held = run_token(env, recipe.steps[4], held)
+    assert res.ok, res.reason

@@ -113,12 +113,14 @@ def fingers_hold(env, name) -> bool:
 # ---- what is being controlled: the EE point, or the held part via its fixed EE-in-part transform ----
 class _Thing:
     # tf is re-measured per token, so a part that shifted in the grip is controlled from where it actually is.
+    # converge() also re-measures it once when it stalls: a part that keeps slipping while moving stalls the
+    # part error just outside tolerance while the EE already sits at its (stale-tf) target.
     def __init__(self, env, held):
         self.env, self.held = env, held
-        if held is None:
-            self.tf = None
-        else:
-            self.tf = np.linalg.inv(_mat(_part(env, held))) @ _mat(_ee(env))
+        self.remeasure()
+
+    def remeasure(self):
+        self.tf = None if self.held is None else np.linalg.inv(_mat(_part(self.env, self.held))) @ _mat(_ee(self.env))
 
     def pose(self):
         return _ee(self.env) if self.held is None else _part(self.env, self.held)
@@ -160,7 +162,7 @@ class _Run:
 
     def converge(self, thing, tgt, grip, pos_tol=POS_TOL, rot_tol=ROT_TOL, yaw_only=False):
         """Drive `thing` to pose tgt; fail 'unreachable' if the error plateaus, else 'timeout'."""
-        w, hist = round(PLATEAU[0] / self.dt), []
+        w, hist, refreshed = round(PLATEAU[0] / self.dt), [], False
         wr = pos_tol / rot_tol
         while True:
             cur = thing.pose()
@@ -171,7 +173,10 @@ class _Run:
                 return
             hist.append(p + wr * r)
             if len(hist) > w and hist[-w - 1] - hist[-1] < PLATEAU[1]:
-                raise _Fail("unreachable")
+                if thing.held is None or refreshed:
+                    raise _Fail("unreachable")
+                thing.remeasure()
+                refreshed, hist = True, []
             self.tick(thing.ee_target(tgt), grip)
 
     def ramp(self, thing, start, direction, speed, dist, grip, check=None):
