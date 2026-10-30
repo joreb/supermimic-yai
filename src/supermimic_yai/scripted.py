@@ -127,6 +127,16 @@ class _Thing:
         return np.asarray(p) if self.held is None else _pose(_mat(p) @ self.tf)
 
 
+def capture_frame(env):
+    """Record a frame if execute(record=True) is active (called once per env step)."""
+    rec = getattr(env, "_rec", None)
+    if rec is not None:
+        rec["i"] += 1
+        if rec["i"] % rec["every"] == 0:
+            rec["r"].update_scene(env.data)
+            rec["frames"].append(rec["r"].render().copy())
+
+
 class _Run:
     def __init__(self, env, budget):
         self.env = env
@@ -142,12 +152,7 @@ class _Run:
                 tgt[:3] = ee_point(env) + gap * LEAD / n
         _, _, term, _, _ = env.step(np.append(ik_step(env, tgt, **IK), grip))
         self.n += 1
-        rec = getattr(env, "_rec", None)
-        if rec is not None:
-            rec["i"] += 1
-            if rec["i"] % rec["every"] == 0:
-                rec["r"].update_scene(env.data)
-                rec["frames"].append(rec["r"].render().copy())
+        capture_frame(env)
         if term:
             raise _Fail("simulation unstable")
         if self.n > self.limit:

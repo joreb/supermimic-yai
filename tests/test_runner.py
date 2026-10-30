@@ -39,6 +39,7 @@ def test_live_mode_no_restore():
     q = env.data.qpos.copy()
     ep = TokenEpisode.live(env, tok, held, 10, 0.05)
     s = ep.reset()
+    assert ep.z0 == env.obs()["part_poses"][tok.part][2]
     assert np.array_equal(env.data.qpos, q) and ep.held == held and s.shape == (2 * env.n_arm + 17,)
 
 
@@ -64,6 +65,30 @@ def test_learned_kinds_routes_scripted(monkeypatch):
         ctrl(env, next(t for t in recipe.steps if t.kind == kind), None)
     assert seen == [("GRASP", w), ("ALIGN", None), ("MOVE_ABOVE", "token")]
     assert ctrl.tags == ["learned", "scripted", "scripted"]
+
+
+class _FakeRenderer:
+    def update_scene(self, data):
+        pass
+
+    def render(self):
+        return np.zeros((2, 2, 3), np.uint8)
+
+
+def test_learned_path_timeout_and_frames(monkeypatch):
+    import torch
+    from supermimic_yai.policy import Actor
+    env, recipe = _setup()
+    tok, held, _ = _to_first(env, recipe, "GRASP")
+    torch.manual_seed(0)
+    n = env.n_arm
+    w = Actor(2 * n + 17, 3, n + 1, 3, 4, 8, 1).export()
+    monkeypatch.setattr(R, "budget_steps", lambda env, tok: 5)
+    env._rec = {"r": _FakeRenderer(), "frames": [], "every": 1, "i": 0}
+    res, h = R.run_contact_token(env, tok, held, w, 0.05)
+    assert not res.ok and res.reason == "timeout" and h == held
+    assert res.sim_time == pytest.approx(5 * env.substeps * env.model.opt.timestep)
+    assert len(env._rec["frames"]) == 5
 
 
 def test_cli_learned_requires_actor():

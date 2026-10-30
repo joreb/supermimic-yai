@@ -3,18 +3,15 @@ import numpy as np
 
 from supermimic_yai.collect import _Recorder, _Stop
 from supermimic_yai.npmlp import actor_forward
-from supermimic_yai.scripted import TokenResult, run_token
-from supermimic_yai.task import TOKEN_KINDS, TokenEpisode, budget_steps
-
-CONTACT = TOKEN_KINDS
+from supermimic_yai.scripted import TokenResult, capture_frame, run_token
+from supermimic_yai.task import DROP_STEPS, TOKEN_KINDS, TokenEpisode, budget_steps
 
 
 def run_contact_token(env, tok, held, weights, action_scale):
     """-> (TokenResult, held). weights=None runs the scripted token through the same step path at zero noise."""
-    ep = TokenEpisode.live(env, tok, held, budget_steps(env, tok), action_scale)
+    # the scripted token judges its own grip; the analytic drop terminal is for learning
+    ep = TokenEpisode.live(env, tok, held, budget_steps(env, tok), action_scale, np.inf if weights is None else DROP_STEPS)
     ep.reset()
-    if weights is None:
-        ep.drop_steps = np.inf  # the scripted token judges its own grip; the analytic drop terminal is for learning
     why, res = [None], None
     if weights is None:
         def log(a, s2, r, done, info):
@@ -27,6 +24,7 @@ def run_contact_token(env, tok, held, weights, action_scale):
         kind, info = TOKEN_KINDS.index(tok.kind), {}
         while "terminal_kind" not in info:
             _, _, _, info = ep.step(actor_forward(weights, ep.s, ep.goal, kind))
+            capture_frame(env)
         why[0] = info["terminal_kind"]
     ok = why[0] == "success" or (res is not None and res.ok)
     reason = "" if ok else why[0] or res.reason
@@ -41,7 +39,7 @@ class LearnedController:
         self.weights, self.scale, self.kinds, self.tags = weights, action_scale, learned_kinds, []
 
     def __call__(self, env, tok, held):
-        if tok.kind not in CONTACT:
+        if tok.kind not in TOKEN_KINDS:
             self.tags.append("scripted")
             return run_token(env, tok, held)
         w = self.weights if tok.kind in self.kinds else None

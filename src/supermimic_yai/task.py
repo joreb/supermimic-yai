@@ -113,17 +113,17 @@ def budget_steps(env, tok) -> int:
 
 
 class TokenEpisode:
-    def __init__(self, env, start, tok, budget_steps, action_scale=0.05):
+    def __init__(self, env, start, tok, budget_steps, action_scale=0.05, drop_steps=DROP_STEPS):
         self.env, self.start, self.tok, self.budget = env, start, tok, budget_steps
         self.scale, self.n = action_scale, env.n_arm
         self.goal = token_goal(tok, env.product)
         self.lo, self.hi = env.action_space.low[:self.n], env.action_space.high[:self.n]
-        self._live, self.drop_steps = False, DROP_STEPS
+        self._live, self.drop_steps = False, drop_steps
 
     @classmethod
-    def live(cls, env, tok, held, budget_steps, action_scale=0.05):
+    def live(cls, env, tok, held, budget_steps, action_scale=0.05, drop_steps=DROP_STEPS):
         """Episode from the env's current state: reset() reads obs() instead of restoring a start state."""
-        ep = cls(env, SimpleNamespace(held=held), tok, budget_steps, action_scale)
+        ep = cls(env, SimpleNamespace(held=held), tok, budget_steps, action_scale, drop_steps)
         ep._live = True
         return ep
 
