@@ -74,17 +74,21 @@ def main():
         if over >= 20:
             print(f"ABORT it {it}: reward sum {m['imagined_reward_sum']:.3g} (max {bound}) or mean V {m['v_mean']:.3g} "
                   f"(range {m['v_lo']:.3g}..{m['v_hi']:.3g}) out of bounds for 20 iterations", flush=True)
+            save_actor_npz(out / "actor_abort.npz", L.actor.export())
+            torch.save(L.actor.state_dict(), out / "actor_abort.pt")
             raise SystemExit(1)
         if it % 50 == 0:
             tw.add_scalar(f"policy/imagined_return/{name}", m["imagined_return"], it)
             tw.add_scalar(f"policy/imagined_reward_sum/{name}", m["imagined_reward_sum"], it)
             tw.add_scalar("policy/grad_norm", m["grad_norm"], it)
+            tw.add_scalar("policy/clamp_frac", m["clamp_frac"], it)
+            tw.add_scalar("policy/held_frac", m["held_frac"], it)
             tw.add_scalar("critic/loss", m["critic_loss"], it)
             tw.add_scalar("sys/it_per_s", it / (time.perf_counter() - t0), it)
             tw.add_scalar("sys/gpu_mem_mb", torch.cuda.max_memory_allocated() / 2**20 if dev == "cuda" else 0, it)
         if it % 500 == 0:
             save_actor_npz(out / f"actor_{it}.npz", L.actor.export())
-            print(f"it {it} return {np.mean(curve[-50:]):.3f} rsum {m['imagined_reward_sum']:.2f} held>.5 {m['held_frac']:.2f} critic {m['critic_loss']:.4f} gn {m['grad_norm']:.2f}", flush=True)
+            print(f"it {it} return {np.mean(curve[-50:]):.3f} rsum {m['imagined_reward_sum']:.2f} held>.5 {m['held_frac']:.2f} clamp {m['clamp_frac']:.3f} critic {m['critic_loss']:.4f} gn {m['grad_norm']:.2f}", flush=True)
     tw.close()
     train_wall = time.perf_counter() - t0
     torch.save(L.actor.state_dict(), out / "actor.pt")

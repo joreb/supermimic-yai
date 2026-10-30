@@ -3,6 +3,7 @@
 reward_t/success_t are torch twins of task.reward/task.success for mixed-kind batches (kind: 0 GRASP, 1 ALIGN, 2 INSERT).
 Indexing: out["d"][:, t] and out["r"][:, t] belong to the transition s_t -> s_{t+1}; c_{t+1} = c_t (1 - d_t).
 """
+import numpy as np
 import torch
 
 from supermimic_yai.scripted import ALIGN_POS_TOL, ALIGN_ROT_TOL
@@ -21,22 +22,29 @@ def reward_range(kind, goal):
     return lo, torch.where(kind == 1, torch.zeros_like(lo), torch.full_like(lo, R_MAX))
 
 
-# Soft grip box on (gripper width, held-part position rel. EE). The env's held flag needs finger contacts (not in the
-# token state); the WM's flag head is unconstrained off-distribution and was exploited (closing ~2 cm away from the part).
-# Edges = 0.1/99.9 percentiles over all held=1 rows (s and s_next, GRASP+ALIGN+INSERT, Plan 2a seed episodes) widened
-# by a margin; each side is a sigmoid of width margin/3, so the box is 0.95 at a fitted edge and ~0 a few cm outside.
-GRIP_LO, GRIP_HI, GRIP_M = 0.0075, 0.0250, 0.0015  # gripper width [m]
-POS_LO, POS_HI, POS_M = (-0.0038, -0.0004, -0.0119), (0.0053, 0.0037, 0.0106), 0.003  # part pos rel. EE [m] (x, y, z)
+def fit_grip_box(buf):
+    """Soft-box parameters for (gripper width, held-part position rel. EE x, y, z), from the held=1 rows of the replay.
+    The env's held flag needs finger contacts (not in the token state) and the WM's flag head is unconstrained
+    off-distribution (it was exploited: closing ~2 cm from the part). Rule: over stable rows' s and s_next with
+    held flag > 0.5, edges = 0.1 / 99.9 percentiles per dim; margin = max(0.15 * (hi - lo), 2 mm). -> {"lo", "hi", "m"}
+    float arrays of shape (4,), or None without held rows. grip_box_t widens each edge by m and uses sigmoids of
+    width m/3, so the box is 0.95 at a fitted edge and ~0 a few cm outside. Limitation: it encodes the grasp geometry of
+    the products in the replay."""
+    n = (buf.s.shape[1] - _EXTRA) // 2
+    ok = buf.stable_rows()
+    x = np.concatenate([buf.s[ok], buf.s2[ok]])
+    x = x[x[:, 2 * n + 8] > 0.5][:, 2 * n:2 * n + 4]
+    if not len(x):
+        return None
+    lo, hi = np.percentile(x, 0.1, axis=0), np.percentile(x, 99.9, axis=0)
+    return {"lo": lo, "hi": hi, "m": np.maximum(0.15 * (hi - lo), 2e-3)}
 
 
-def grip_box_t(s):
+def grip_box_t(s, grip):
     n = (s.shape[-1] - _EXTRA) // 2
-    sg = torch.sigmoid
-    lo = torch.tensor((GRIP_LO, *POS_LO), dtype=s.dtype, device=s.device)
-    hi = torch.tensor((GRIP_HI, *POS_HI), dtype=s.dtype, device=s.device)
-    m = torch.tensor((GRIP_M, *(POS_M,) * 3), dtype=s.dtype, device=s.device)
-    x = torch.cat([s[..., 2 * n:2 * n + 1], s[..., 2 * n + 1:2 * n + 4]], -1)
-    return (sg(3 * (x - lo + m) / m) * sg(3 * (hi + m - x) / m)).prod(-1)
+    lo, hi, m = (torch.as_tensor(grip[k], dtype=s.dtype, device=s.device) for k in ("lo", "hi", "m"))
+    x = s[..., 2 * n:2 * n + 4]
+    return (torch.sigmoid(3 * (x - lo + m) / m) * torch.sigmoid(3 * (hi + m - x) / m)).prod(-1)
 
 
 def _slices(s):
@@ -78,25 +86,35 @@ def success_t(kind, s, goal):
     return torch.where(kind == 0, ok[0], torch.where(kind == 1, ok[1], ok[2]))
 
 
-def _set_held(s):
-    """held := clamp(WM held, 0, 1) * grip_box(s): the WM judges lift/contact, the box blocks implausible grips."""
-    i = (s.shape[-1] - _EXTRA) // 2 * 2 + 8
-    new = s[..., i].clamp(0, 1) * grip_box_t(s)
+def held_index(s_dim):
+    return (s_dim - _EXTRA) // 2 * 2 + 8
+
+
+def _set_held(s, grip=None):
+    """held := clamp(WM held, 0, 1) * grip_box(s) (box only when grip is given): the WM judges lift/contact, the box
+    blocks implausible grips."""
+    i = held_index(s.shape[-1])
+    new = s[..., i].clamp(0, 1)
+    if grip is not None:
+        new = new * grip_box_t(s, grip)
     return torch.cat([s[..., :i], new[..., None], s[..., i + 1:]], -1)
 
 
-def imagine(wm, actor, s0, goal, ctx, kind, H, lo=None, hi=None):
+def imagine(wm, actor, s0, goal, ctx, kind, H, lo=None, hi=None, grip=None):
     """-> {s (B,H+1,s_dim), r (B,H), d (B,H), c (B,H+1)}. WM params get no grad; states and actions do.
-    lo/hi (s_dim,): per-dimension clamp on every predicted state, keeping the rollout inside the data range."""
+    lo/hi (s_dim,): per-dimension clamp on every predicted state, keeping the rollout inside the data range;
+    out["sat"] is the fraction of predicted state entries that clamp moved. grip: fit_grip_box dict (see _set_held)."""
     flags = [p.requires_grad for p in wm.parameters()]
     wm.requires_grad_(False)
     try:
-        s, S, R, D = s0, [s0], [], []
+        s, S, R, D, sat = s0, [s0], [], [], []
         for _ in range(H):
             s2, d = wm.step(s, actor(s, goal, kind), ctx, kind)
             if lo is not None:
-                s2 = torch.maximum(torch.minimum(s2, hi), lo)
-            s2 = _set_held(s2)
+                c = torch.maximum(torch.minimum(s2, hi), lo)
+                sat.append((c != s2).float().mean().detach())
+                s2 = c
+            s2 = _set_held(s2, grip)
             R.append(reward_t(kind, s, s2, goal)), D.append(d), S.append(s2)
             s = s2
     finally:
@@ -104,7 +122,8 @@ def imagine(wm, actor, s0, goal, ctx, kind, H, lo=None, hi=None):
             p.requires_grad_(f)
     d = torch.stack(D, 1)
     c = torch.cat([torch.ones_like(d[:, :1]), torch.cumprod(1 - d.clamp(0, 1), 1)], 1)
-    return {"s": torch.stack(S, 1), "r": torch.stack(R, 1), "d": d, "c": c}
+    return {"s": torch.stack(S, 1), "r": torch.stack(R, 1), "d": d, "c": c,
+            "sat": torch.stack(sat).mean().item() if sat else 0.0}
 
 
 def _values(out, critic, goal, ctx, kind):

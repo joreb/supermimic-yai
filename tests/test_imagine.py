@@ -3,14 +3,14 @@ import pytest
 import torch
 
 from supermimic_yai import task
-from supermimic_yai.imagine import (grip_box_t, critic_loss, gae_targets, imagine, policy_loss, policy_step, reward_t,
+from supermimic_yai.imagine import (fit_grip_box, grip_box_t, critic_loss, gae_targets, imagine, policy_loss, policy_step, reward_t,
                                     success_t)
 from supermimic_yai.policy import Actor, Critic
 from supermimic_yai.wm import WorldModel
 from test_collect import a_bank, collector  # noqa: F401  (fixtures)
 
 N_ARM = 7
-SD, AD, GD, CD, NK = 2 * N_ARM + 17, N_ARM + 1, 3, 2 + N_ARM, 3
+SD, AD, GD, CD, NK = 2 * N_ARM + task._EXTRA, N_ARM + 1, 3, 2 + N_ARM, 3
 
 
 def _nets(seed=0):
@@ -50,7 +50,7 @@ def test_reward_twin_parity(collector):  # noqa: F811
         assert (success_t(torch.as_tensor(kk), t(S), g).numpy() == np.array(ref_s)).all()
     # force the branches real data may not hit: INSERT force above its limit, rotated held part
     S2f = S2.copy()
-    n = (S.shape[1] - 17) // 2
+    n = (S.shape[1] - task._EXTRA) // 2
     S2f[:, 2 * n + 16] = 1 + np.random.default_rng(1).random(len(S))
     ang = np.random.default_rng(2).uniform(0.05, 1.0, len(S))
     qz = np.stack([np.cos(ang / 2), 0 * ang, 0 * ang, np.sin(ang / 2)], 1)
@@ -125,12 +125,17 @@ def test_gae_targets_detached_and_match_reference():
 
 
 def test_grip_box_recall_and_regression(collector):  # noqa: F811
+    from supermimic_yai.replay import buffer_from
     c, _, _ = collector
-    S = np.concatenate([np.concatenate([e["s"][:-1], e["s"][1:]]) for e in c.collect(12, None, rng_seed=1)])
-    n = (SD - 17) // 2
+    eps = c.collect(40, None, rng_seed=1)
+    grip = fit_grip_box(buffer_from(eps[:20]))  # fit on one half, test on the other
+    n = (SD - task._EXTRA) // 2
+    S = np.concatenate([np.concatenate([e["s"][:-1], e["s"][1:]]) for e in eps[20:]])
     held = S[S[:, 2 * n + 8] > 0.5]
     assert len(held) > 100
-    assert (grip_box_t(torch.as_tensor(held)) >= 0.5).double().mean() >= 0.98
+    rec = (grip_box_t(torch.as_tensor(held), grip) >= 0.5).double().mean().item()
+    print("held-out recall", rec)
+    assert rec >= 0.98
     s = torch.as_tensor(held[:1]).clone()
     s[0, 2 * n + 1:2 * n + 4] = torch.tensor([0.02, 0.0, 0.0])  # closed gripper, part 2 cm outside the box
-    assert grip_box_t(s).item() < 0.05
+    assert grip_box_t(s, grip).item() < 0.05

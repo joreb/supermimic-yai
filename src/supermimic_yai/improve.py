@@ -4,8 +4,8 @@ import math
 import numpy as np
 import torch
 
-from supermimic_yai.imagine import (_values, critic_loss, gae_targets, imagine, policy_loss, policy_step,
-                                    value_range)
+from supermimic_yai.imagine import (_values, critic_loss, fit_grip_box, gae_targets, held_index, imagine, policy_loss,
+                                    policy_step, value_range)
 from supermimic_yai.policy import Actor, Critic
 from supermimic_yai.task import TOKEN_KINDS
 
@@ -24,11 +24,12 @@ class Learner:
 
     def set_norm(self, buf):
         ok = buf.stable_rows()
-        self.actor.set_norm(buf.s[ok])
+        self.actor.set_norm(buf.s[ok], self.p["std_floor"])
         self.critic.set_norm(buf.s[ok], buf.ctx[ok])
         x = np.concatenate([buf.s[ok], buf.s2[ok]])  # imagined states stay within the data range + 5% of it
         lo, hi = x.min(0), x.max(0)
         m = 0.05 * (hi - lo)
+        self.grip = fit_grip_box(buf)
         self.lo, self.hi = (torch.as_tensor(v, dtype=torch.float32, device=self.dev) for v in (lo - m, hi + m))
 
     def _sample(self, buf, rng, kinds):
@@ -40,7 +41,7 @@ class Learner:
     def update(self, buf, rng, kinds) -> dict:
         p, c = self.p, self.c
         _, s0, goal, ctx, kind = self._sample(buf, rng, kinds)
-        out = imagine(self.wm, self.actor, s0, goal, ctx, kind, p["horizon"], self.lo, self.hi)
+        out = imagine(self.wm, self.actor, s0, goal, ctx, kind, p["horizon"], self.lo, self.hi, self.grip)
         loss = policy_loss(out, self.critic, goal, ctx, kind, p["gamma"])
         gn = policy_step(self.actor, self.opt_a, loss, p["grad_clip"], p["grad_clip_elem"])
         B, H = out["r"].shape
@@ -59,9 +60,9 @@ class Learner:
             s.step()
         with torch.no_grad():  # raw critic output vs the physical value range, for the abort check
             v, (vlo, vhi) = _values(out, self.critic, goal, ctx, kind).mean().item(), value_range(kind, goal, p["gamma"])
-        held = (out["s"][:, 1:, (out["s"].shape[-1] - 17) // 2 * 2 + 8] > 0.5).float().mean().item()
+        held = (out["s"][:, 1:, held_index(out["s"].shape[-1])] > 0.5).float().mean().item()
         rs = (out["c"][:, :H] * out["r"]).sum(1).mean().item()  # bounded by H * r_max, unlike the bootstrapped return
-        return {"held_frac": held, "v_mean": v, "v_lo": vlo.mean().item(), "v_hi": vhi.mean().item(), "imagined_reward_sum": rs, "imagined_return": -loss.item(), "policy_loss": loss.item(), "critic_loss": cl.item(), "grad_norm": gn}
+        return {"clamp_frac": out["sat"], "held_frac": held, "v_mean": v, "v_lo": vlo.mean().item(), "v_hi": vhi.mean().item(), "imagined_reward_sum": rs, "imagined_return": -loss.item(), "policy_loss": loss.item(), "critic_loss": cl.item(), "grad_norm": gn}
 
     def bc_update(self, buf, rng, kinds) -> dict:
         i, s, goal, _, kind = self._sample(buf, rng, kinds)

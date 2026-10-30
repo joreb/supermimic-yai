@@ -25,9 +25,8 @@ class Actor(nn.Module):
         self.register_buffer("s_mu", torch.zeros(s_dim))
         self.register_buffer("s_sd", torch.ones(s_dim))
 
-    def set_norm(self, s, floor=1e-2):
-        """floor: raw-unit std floor (1 cm / 0.01 rad: finer than any scale the policy can act on). Without it, dims
-        with ~1 mm data spread blow up to 100s of sigma once the world model drifts, and the actor exploits that."""
+    def set_norm(self, s, floor=1e-3):
+        """floor: raw-unit std floor (config policy.std_floor); it lives in s_sd, so the numpy export matches."""
         mu, sd = _stats(s)
         self.s_mu.copy_(mu), self.s_sd.copy_(sd.clamp_min(floor))
 
