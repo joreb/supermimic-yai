@@ -14,6 +14,8 @@ here), so success only needs the product tolerance, carried in goal[2].
 reward/success are mujoco-free numpy; quaternions are normalised before use.
 """
 
+from types import SimpleNamespace
+
 import mujoco
 import numpy as np
 
@@ -116,13 +118,21 @@ class TokenEpisode:
         self.scale, self.n = action_scale, env.n_arm
         self.goal = token_goal(tok, env.product)
         self.lo, self.hi = env.action_space.low[:self.n], env.action_space.high[:self.n]
+        self._live, self.drop_steps = False, DROP_STEPS
+
+    @classmethod
+    def live(cls, env, tok, held, budget_steps, action_scale=0.05):
+        """Episode from the env's current state: reset() reads obs() instead of restoring a start state."""
+        ep = cls(env, SimpleNamespace(held=held), tok, budget_steps, action_scale)
+        ep._live = True
+        return ep
 
     def _state(self, obs):
         return token_state(obs, self.env, self.tok, self.held, self.z0)
 
     def reset(self):
         self.held, self.t, self.lost, self.ratio = self.start.held, 0, 0, 0.0
-        obs = self.env.restore(self.start)
+        obs = self.env.obs() if self._live else self.env.restore(self.start)
         self.z0 = obs["part_poses"][self.held or self.tok.part][2]
         self.s = self._state(obs)
         return self.s
@@ -142,7 +152,7 @@ class TokenEpisode:
             why = "unstable"
         elif success(kind, s2, self.goal):
             why = "success"
-        elif kind != "GRASP" and self.lost >= DROP_STEPS:
+        elif kind != "GRASP" and self.lost >= self.drop_steps:
             why = "dropped"
         elif kind == "INSERT" and s2[-1] > 2:
             why = "force"

@@ -316,7 +316,9 @@ def run_token(env, token: Token, held: str | None) -> tuple[TokenResult, str | N
     return TokenResult(True, "", run.n * run.dt), held
 
 
-def execute(env, recipe: Recipe, record: bool = False, fps: int = 25, on_token_start=None) -> ExecutionLog:
+def execute(env, recipe: Recipe, record: bool = False, fps: int = 25, on_token_start=None,
+            controller=None) -> ExecutionLog:
+    controller = controller or run_token
     log, held = ExecutionLog(), None
     if record:
         hz = 1 / (env.substeps * env.model.opt.timestep)
@@ -326,7 +328,7 @@ def execute(env, recipe: Recipe, record: bool = False, fps: int = 25, on_token_s
         for i, tok in enumerate(recipe.steps):
             if on_token_start is not None:
                 on_token_start(env, i, tok, held)
-            res, held = run_token(env, tok, held)
+            res, held = controller(env, tok, held)
             log.results.append(res)
             if not res.ok:
                 log.stopped_at = i

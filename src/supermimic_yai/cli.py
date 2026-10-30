@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from supermimic_yai.arm import ArmError, load_arm
+from supermimic_yai.config import load_config
 from supermimic_yai.env import AssemblyEnv
 from supermimic_yai.product import ProductError, load_product
 from supermimic_yai.score import score
@@ -19,7 +20,12 @@ def main(argv=None) -> int:
     r.add_argument("--arm", type=Path, help="arm directory (default: the only directory under arms/)")
     r.add_argument("--seed", type=int, default=0)
     r.add_argument("--video", type=Path)
+    r.add_argument("--controller", choices=["scripted", "learned"], default="scripted")
+    r.add_argument("--actor", type=Path, help="actor .npz (required for --controller learned)")
     a = ap.parse_args(argv)
+    if a.controller == "learned" and a.actor is None:
+        print("error: --controller learned needs --actor PATH.npz", file=sys.stderr)
+        return 2
 
     arm_dir = a.arm
     if arm_dir is None:
@@ -39,9 +45,15 @@ def main(argv=None) -> int:
     print("\n".join(lines))
     env = AssemblyEnv(arm, product)
     env.reset(seed=a.seed)
-    log = execute(env, recipe, record=a.video is not None)
-    for line, res in zip(lines, log.results):
-        print(f"{line}: {'ok' if res.ok else 'FAILED (' + res.reason + ')'} [{res.sim_time:.2f} s]")
+    ctrl = None
+    if a.controller == "learned":
+        from supermimic_yai.npmlp import load_actor_npz
+        from supermimic_yai.runner import LearnedController
+        ctrl = LearnedController(load_actor_npz(a.actor), load_config("laptop")["action_scale"])
+    log = execute(env, recipe, record=a.video is not None, controller=ctrl)
+    tags = ctrl.tags if ctrl else ["scripted"] * len(log.results)
+    for line, res, tag in zip(lines, log.results, tags):
+        print(f"{line} [{tag}]: {'ok' if res.ok else 'FAILED (' + res.reason + ')'} [{res.sim_time:.2f} s]")
     report = score(product, env.obs()["part_poses"])
     for s in report.parts:
         print(f"{s.part}: pos_err {s.pos_err * 1000:.1f} mm, rot_err {s.rot_err_deg:.1f} deg, {'ok' if s.ok else 'FAIL'}")
