@@ -14,14 +14,14 @@ def _name(d):
     return json.loads((Path(d) / "assembly.json").read_text())["name"]
 
 
-def eval_tokens(cfg, arm_dir, product_dirs, bank_path, weights, n_per_kind, rng_seed=0, learned_kinds=("GRASP",)):
+def eval_tokens(cfg, arm_dir, pdirs, bank_path, weights, n_per_kind, rng_seed=0, learned_kinds=("GRASP",)):
     """-> {(product, kind): {"success", "n", "terminal"}}. Kinds outside learned_kinds run scripted (weights=None)."""
-    names = [_name(d) for d in product_dirs]
+    names = [_name(d) for d in pdirs]
     kinds = sorted({s.token for s in load_bank(bank_path) if s.product in names})
     out = {}
     for kind in kinds:
         w = weights if kind in learned_kinds else None
-        with Collector(cfg, arm_dir, product_dirs, bank_path, kinds=[kind]) as c:
+        with Collector(cfg, arm_dir, pdirs, bank_path, kinds=[kind]) as c:
             eps = c.collect(n_per_kind * len(names), w, rng_seed=rng_seed, noise=[0.0])
         for p in names:
             cnt = Counter(e["terminal_kind"] for e in eps if e["product"] == p)
@@ -31,7 +31,7 @@ def eval_tokens(cfg, arm_dir, product_dirs, bank_path, weights, n_per_kind, rng_
     return out
 
 
-def eval_recipes(arm_dir, product_dirs, weights, seeds, record_first=False, action_scale=0.05, learned_kinds=("GRASP",)):
+def eval_recipes(arm_dir, pdirs, weights, seeds, record_first=False, action_scale=0.05, learned_kinds=("GRASP",)):
     """-> {product: {"success", "per_token", "frames"}}; weights=None runs the plain scripted recipe."""
     from supermimic_yai.arm import load_arm
     from supermimic_yai.env import AssemblyEnv
@@ -44,7 +44,7 @@ def eval_recipes(arm_dir, product_dirs, weights, seeds, record_first=False, acti
     if bad := [s for s in seeds if s not in seedmod.EVAL]:
         raise ValueError(f"seeds outside seeds.EVAL: {bad}")
     arm, out = load_arm(Path(arm_dir)), {}
-    for d in product_dirs:
+    for d in pdirs:
         product = load_product(Path(d))
         recipe, env = load_recipe(resolve_recipe(d), product, arm), AssemblyEnv(arm, product)
         ok, per, frames = 0, np.zeros(len(recipe.steps)), None
