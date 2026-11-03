@@ -22,7 +22,12 @@ def eval_tokens(cfg, arm_dir, pdirs, bank_path, weights, n_per_kind, rng_seed=0,
     for kind in kinds:
         w = weights if kind in learned_kinds else None
         with Collector(cfg, arm_dir, pdirs, bank_path, kinds=[kind]) as c:
-            eps = c.collect(n_per_kind * len(names), w, rng_seed=rng_seed, noise=[0.0])
+            rng, picks = np.random.default_rng(rng_seed), []
+            for p in names:  # exactly n_per_kind distinct start states per product, or all of them if fewer
+                idx = [i for i, s in enumerate(c.bank) if s.product == p]
+                picks += list(rng.choice(idx, min(n_per_kind, len(idx)), replace=False)) if idx else []
+            it = iter(picks)
+            eps = c.collect(len(picks), w, rng_seed=rng_seed, sampler=lambda r, bank: int(next(it)), noise=[0.0])
         for p in names:
             cnt = Counter(e["terminal_kind"] for e in eps if e["product"] == p)
             n = sum(cnt.values())
@@ -57,6 +62,7 @@ def eval_recipes(arm_dir, pdirs, weights, seeds, record_first=False, action_scal
             ok += log.stopped_at is None and score(product, env.obs()["part_poses"]).success
             if record_first and i == 0:
                 frames = log.frames
+        env.close()
         out[product.name] = {"success": ok / len(seeds), "per_token": list(per / len(seeds)), "frames": frames}
     return out
 

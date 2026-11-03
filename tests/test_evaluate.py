@@ -20,7 +20,11 @@ def test_log_video_smoke(tmp_path):
     w = SummaryWriter(str(tmp_path))
     log_video(w, "v", np.zeros((3, 480, 640, 3), np.uint8), 0)
     w.close()
-    assert list(tmp_path.iterdir())
+    from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+    acc = EventAccumulator(str(tmp_path), size_guidance={"images": 0})
+    acc.Reload()
+    (im,) = acc.Images("v")
+    assert (im.height, im.width) == (240, 320)
 
 
 def test_results_markdown_labels_scripted():
@@ -39,7 +43,7 @@ def test_eval_recipes_scripted_baseline():
     from supermimic_yai.product import load_product
     from supermimic_yai.tokens import load_recipe
     n = len(load_recipe(ROOT / "recipes" / "product_a.json", load_product(Path(A)), load_arm(ROOT / "arms" / "panda")).steps)
-    assert 0.0 <= r["success"] <= 1.0 and len(r["per_token"]) == n
+    assert r["success"] == 1.0 and r["per_token"] == [1.0] * n  # scripted A, EVAL[:2], is 2/2
     assert r["frames"]
 
 
