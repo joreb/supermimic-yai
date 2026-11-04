@@ -141,6 +141,14 @@ def _probe(args):
     return os.getpid(), "torch" in sys.modules, len(_G["envs"]), _G["peak"]
 
 
+class _Pending:
+    def __init__(self, res):
+        self.ready, self._res = res.ready, res
+
+    def get(self):
+        return [e for chunk in self._res.get() for e in chunk if e is not None]
+
+
 class Collector:
     def __init__(self, cfg, arm_dir, dirs, bank_path, kinds=None):
         self.noises, self.workers = cfg["collect"]["action_noise"], cfg["collect"]["workers"]
@@ -155,6 +163,10 @@ class Collector:
     def collect(self, n_episodes, policy_weights=None, rng_seed=0, sampler=None, noise=None):
         """sampler(rng, bank) -> index into bank; default uniform (Plan 2b swaps in return-based reset sampling).
         noise: list overriding collect.action_noise ([0.0] for evaluation)."""
+        return self.collect_async(n_episodes, policy_weights, rng_seed, sampler, noise).get()
+
+    def collect_async(self, n_episodes, policy_weights=None, rng_seed=0, sampler=None, noise=None):
+        """Same arguments as collect -> handle with ready() and get() (the episode list; blocks until done)."""
         noises = noise if noise is not None else self.noises
         rng = np.random.default_rng(rng_seed)
         pick = sampler or (lambda r, bank: int(r.integers(len(bank))))
@@ -163,8 +175,8 @@ class Collector:
         jobs = sorted(((self.bank[i], int(sd), float(rng.choice(noises)), i) for i, sd in zip(idx, seeds)),
                       key=lambda j: j[0].product)
         m = max(1, -(-n_episodes // (self.workers * 4)))  # same-product jobs stay together so envs are reused
-        res = self.pool.map(_run_chunk, [(jobs[i:i + m], policy_weights) for i in range(0, len(jobs), m)])
-        return [e for chunk in res for e in chunk if e is not None]
+        res = self.pool.map_async(_run_chunk, [(jobs[i:i + m], policy_weights) for i in range(0, len(jobs), m)])
+        return _Pending(res)
 
     def close(self):
         self.pool.terminate()

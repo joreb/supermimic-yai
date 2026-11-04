@@ -4,7 +4,7 @@ import math
 import numpy as np
 import torch
 
-from supermimic_yai.imagine import (_values, critic_loss, fit_grip_box, gae_targets, held_index, imagine, policy_loss,
+from supermimic_yai.imagine import (R_MAX, _values, critic_loss, fit_grip_box, gae_targets, held_index, imagine, policy_loss,
                                     policy_step, value_range)
 from supermimic_yai.policy import Actor, Critic
 from supermimic_yai.task import TOKEN_KINDS
@@ -70,3 +70,8 @@ class Learner:
         loss = ((self.actor(s, goal, kind) - a) ** 2).mean()
         gn = policy_step(self.actor, self.opt_a, loss, self.p["grad_clip"], self.p["grad_clip_elem"])
         return {"bc_loss": loss.item(), "grad_norm": gn}
+
+
+def out_of_bounds(m, horizon) -> bool:
+    """Abort criterion on a Learner.update result: imagined reward sum above horizon * r_max, or mean V outside its physical range."""
+    return m["imagined_reward_sum"] > horizon * R_MAX + 1e-3 or not m["v_lo"] <= m["v_mean"] <= m["v_hi"]

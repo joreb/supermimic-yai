@@ -5,4 +5,4 @@ replay: {capacity: 4000000}
 policy: {z_dim: 32, width: 2048, depth: 3, lr: 2.0e-4, betas: [0.9, 0.95], grad_clip: 1.0, grad_clip_elem: 0.1, gamma: 0.99, horizon: 32, batch: 4096, bc_iters: 2000, std_floor: 1.0e-3}
 critic: {width: 256, depth: 2, lam: 0.95, epochs: 5, minibatches: 4}
 wm: {width: 2048, depth: 3, k: 8, batch: 20480, lr: 2.0e-4, grad_clip: 1.0}
-train: {lr_decay_iters: 250000}
+train: {episodes_per_iter: 64, min_updates: 20, max_updates: 400, lr_decay_iters: 250000, log_every: 10, eval_every: 50, eval_n: 30, eval_recipe_seeds: 10, video_every: 200, ckpt_every: 50}

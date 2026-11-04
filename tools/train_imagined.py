@@ -45,8 +45,7 @@ def main():
     import torch
     from torch.utils.tensorboard import SummaryWriter
 
-    from supermimic_yai.imagine import R_MAX
-    from supermimic_yai.improve import Learner
+    from supermimic_yai.improve import Learner, out_of_bounds
     from supermimic_yai.npmlp import save_actor_npz
     from supermimic_yai.task import TOKEN_KINDS
     from supermimic_yai.wm import load_wm
@@ -65,12 +64,11 @@ def main():
         m = L.bc_update(buf, rng, kinds)
         if it % 100 == 0:
             tw.add_scalar("policy/bc_loss", m["bc_loss"], it)
-    curve, over, bound = [], 0, cfg["policy"]["horizon"] * R_MAX
+    curve, over, bound = [], 0, cfg["policy"]["horizon"]
     for it in range(1, a.iters + 1):
         m = L.update(buf, rng, kinds)
         curve.append(m["imagined_return"])
-        bad = m["imagined_reward_sum"] > bound + 1e-3 or not m["v_lo"] <= m["v_mean"] <= m["v_hi"]
-        over = over + 1 if bad else 0
+        over = over + 1 if out_of_bounds(m, cfg["policy"]["horizon"]) else 0
         if over >= 20:
             print(f"ABORT it {it}: reward sum {m['imagined_reward_sum']:.3g} (max {bound}) or mean V {m['v_mean']:.3g} "
                   f"(range {m['v_lo']:.3g}..{m['v_hi']:.3g}) out of bounds for 20 iterations", flush=True)
