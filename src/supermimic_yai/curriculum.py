@@ -5,6 +5,7 @@ import numpy as np
 class ResetSampler:
     def __init__(self, bank, gamma, ema=0.1, temp=25.0, mix=(0.5, 0.4, 0.1)):
         self.gamma, self.ema, self.temp, self.mix = gamma, ema, temp, mix
+        self.n_bank = len(bank)
         self.kind = {}
         self.members = {}
         for i, s in enumerate(bank):
@@ -41,12 +42,15 @@ class ResetSampler:
             r = np.asarray(e["r"], float)
             g = float(r @ self.gamma ** np.arange(len(r)))
             b = e["step"]
+            if b not in self.members:
+                raise ValueError(f"episode step {b} has no bin in the bank")
             self.G[b] = g if b not in self.G else (1 - self.ema) * self.G[b] + self.ema * g
         for b, x in self._soft().items():
             self.wsum[b] += x
         self.n += 1
 
     def __call__(self, rng, bank):
+        assert len(bank) == self.n_bank, "sampler was built for a different bank"  # indices come from construction
         w = self.weights()
         b = self.bins[rng.choice(len(self.bins), p=[w[x] for x in self.bins])]
         return self.members[b][int(rng.integers(len(self.members[b])))]

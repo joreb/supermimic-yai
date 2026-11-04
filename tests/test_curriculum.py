@@ -41,12 +41,41 @@ def test_low_return_bin_sampled_more():
 def test_learned_bin_keeps_practice():
     bank = mk({0: "INSERT", 1: "INSERT", 2: "INSERT"})
     sm = ResetSampler(bank, 0.99)
+    off = ResetSampler(bank, 0.99, mix=(0.5, 0.5, 0.0))
     for _ in range(20):
-        sm.update([ep(0, -5.0), ep(1, 0.0), ep(2, 0.0)])
-    for _ in range(5):
-        sm.update([ep(0, 0.0), ep(1, 0.0), ep(2, -5.0)])
-    # bin 0 is now easiest; the 10 % term still gives it more than the 50 % uniform term alone
-    assert sm.weights()[0] > 0.5 / 3 + 0.01
+        for x in (sm, off):
+            x.update([ep(0, -5.0), ep(1, 0.0), ep(2, -1.0)])
+    for _ in range(12):
+        for x in (sm, off):
+            x.update([ep(0, 3.0), ep(1, 0.0), ep(2, -1.0)])
+    G = sm.state_dict()["G"]
+    assert G[0] > G[1] > G[2]  # bin 0 is now the highest-return bin
+    assert sm.weights()[0] > off.weights()[0] + 0.005  # only the 10 % term keeps practice on it
+    p = shares(sm, bank)
+    assert p[0] > shares(off, bank)[0]
+
+
+def test_unvisited_bin_counts_lowest():
+    bank = mk({0: "INSERT", 1: "INSERT", 2: "INSERT"})
+    sm = ResetSampler(bank, 0.99)
+    sm.update([ep(0, -5.0), ep(1, 0.0)])
+    w = sm.weights()
+    assert w[2] == w[0] > w[1]  # unvisited ties the lowest-return bin (G_hat = 0)
+
+
+def test_kind_without_visits_is_uniform():
+    bank = mk({0: "GRASP", 1: "GRASP", 2: "INSERT", 3: "INSERT"})
+    sm = ResetSampler(bank, 0.99)
+    sm.update([ep(2, -5.0), ep(3, 0.0)])
+    w = sm.weights()
+    assert abs(w[0] - w[1]) < 1e-12 and w[2] > w[3]
+
+
+def test_unknown_step_raises():
+    import pytest
+    sm = ResetSampler(mk({0: "INSERT"}), 0.99)
+    with pytest.raises(ValueError):
+        sm.update([ep(7, 0.0)])
 
 
 def test_per_kind_normalisation():
