@@ -72,12 +72,20 @@ def test_train_smoke(setup, tmp_path):
     assert "mujoco.viewer" not in sys.modules
 
 
+def _scalar_steps(path, tag):
+    from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+    acc = EventAccumulator(str(path), size_guidance={"scalars": 0})
+    acc.Reload()
+    return [e.step for e in acc.Scalars(tag)]
+
+
 def test_resume_continues_iteration(setup, tmp_path):
     import torch
     from supermimic_yai.train import main
     assert main(args(setup, tmp_path, 1, "--set", "train.eval_every=1000")) == 1
     assert main(args(setup, tmp_path, 2, "--set", "train.eval_every=1000", "--resume")) == 2
     assert torch.load(tmp_path / "ckpt.pt", weights_only=False)["it"] == 2
+    assert _scalar_steps(tmp_path, "wm/loss") == [1, 2]  # without --resume iteration 1 would run twice
 
 
 def test_rejects_eval_product_in_training(setup, tmp_path):
@@ -85,6 +93,30 @@ def test_rejects_eval_product_in_training(setup, tmp_path):
     with pytest.raises(SystemExit, match="product_b"):
         main(args(setup, tmp_path, 1, products=(A, B)))
 
+
+def test_rejects_heldout_state_in_bank(setup, tmp_path):
+    import dataclasses
+    from supermimic_yai.startbank import load_bank
+    from supermimic_yai.train import main
+    save_bank(tmp_path / "bank.npz", [dataclasses.replace(s, product="product_b") for s in load_bank(setup / "bank.npz")[:2]])
+    a = args(setup, tmp_path, 1)
+    a[a.index("--bank") + 1] = str(tmp_path / "bank.npz")
+    with pytest.raises(SystemExit, match="--bank"):
+        main(a)
+
+
+def test_abort_keeps_last_good_ckpt(setup, tmp_path, monkeypatch):
+    import torch
+    from supermimic_yai import improve, train
+    assert train.main(args(setup, tmp_path, 1, "--set", "train.eval_every=1000")) == 1
+    good = (tmp_path / "ckpt.pt").read_bytes()
+    monkeypatch.setattr(improve, "out_of_bounds", lambda m, h: True)
+    monkeypatch.setattr(train, "ABORT_STREAK", 1)
+    with pytest.raises(SystemExit, match="ABORT"):
+        train.main(args(setup, tmp_path, 3, "--set", "train.eval_every=1000", "--resume"))
+    assert (tmp_path / "actor_abort.npz").exists()
+    assert (tmp_path / "ckpt.pt").read_bytes() == good
+    assert torch.load(tmp_path / "ckpt.pt", weights_only=False)["it"] == 1
 
 
 def test_import_pulls_no_torch():

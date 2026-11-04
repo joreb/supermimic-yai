@@ -45,6 +45,7 @@ def main():
     import torch
     from torch.utils.tensorboard import SummaryWriter
 
+    from supermimic_yai.imagine import R_MAX
     from supermimic_yai.improve import Learner, out_of_bounds
     from supermimic_yai.npmlp import save_actor_npz
     from supermimic_yai.task import TOKEN_KINDS
@@ -70,7 +71,7 @@ def main():
         curve.append(m["imagined_return"])
         over = over + 1 if out_of_bounds(m, cfg["policy"]["horizon"]) else 0
         if over >= 20:
-            print(f"ABORT it {it}: reward sum {m['imagined_reward_sum']:.3g} (max {bound}) or mean V {m['v_mean']:.3g} "
+            print(f"ABORT it {it}: reward sum {m['imagined_reward_sum']:.3g} (max {bound * R_MAX}) or mean V {m['v_mean']:.3g} "
                   f"(range {m['v_lo']:.3g}..{m['v_hi']:.3g}) out of bounds for 20 iterations", flush=True)
             save_actor_npz(out / "actor_abort.npz", L.actor.export())
             torch.save(L.actor.state_dict(), out / "actor_abort.pt")

@@ -25,6 +25,7 @@ from supermimic_yai.startbank import load_bank
 from supermimic_yai.task import TOKEN_KINDS
 
 TRAINED = ("GRASP", "ALIGN", "INSERT")  # PLACE/PRESS stay scripted (ruling P1)
+ABORT_STREAK = 20  # consecutive out-of-bounds updates of one kind
 
 
 def _names(d):
@@ -115,69 +116,74 @@ def run(a):
             save_actor_npz(out / "actor_bc.npz", L.actor.export())
         tens = lambda b: {k: torch.as_tensor(v, device=dev, dtype=torch.int64 if k == "kind" else torch.float32)  # noqa: E731
                           for k, v in b.items() if k in ("s", "a", "ctx", "kind", "done")}
-        t0, streak, it = time.perf_counter(), 0, start
-        for it in range(start + 1, a.iters + 1):
-            wts = L.actor.export()
-            tc = time.perf_counter()
-            pending = coll.collect_async(t["episodes_per_iter"], wts, rng_seed=it, sampler=sampler)
-            n, last = 0, {}
-            while n < t["max_updates"] and (n < t["min_updates"] or not pending.ready()):
-                wm.requires_grad_(True)
-                wl, _ = wm_loss(wm, tens(buf.sample_windows(w_cfg["k"], w_cfg["batch"], rng)), w_cfg["k"])
-                opt_w.zero_grad(set_to_none=True)
-                wl.backward()
-                torch.nn.utils.clip_grad_norm_(wm.parameters(), w_cfg["grad_clip"])
-                opt_w.step()
-                wm.requires_grad_(False)  # imagination must not leave gradients on the world model
-                k = kinds[n % len(kinds)]
-                m = last[k] = L.update(buf, rng, (k,))
-                streak = streak + 1 if out_of_bounds(m, p_cfg["horizon"]) else 0
-                if streak >= 20:
-                    save_actor_npz(out / "actor_abort.npz", L.actor.export())
-                    save_ckpt(it - 1)
-                    raise SystemExit(f"ABORT it {it}: imagined reward sum or mean V out of bounds for 20 updates "
-                                     f"(rsum {m['imagined_reward_sum']:.3g}, V {m['v_mean']:.3g} in {m['v_lo']:.3g}..{m['v_hi']:.3g})")
-                n += 1
-            new = pending.get()
-            collect_s = time.perf_counter() - tc
-            for e in new:
-                buf.add(e)
-            sampler.update(new)
-            save_actor_npz(out / "actor.npz", L.actor.export())
-            if it % t["log_every"] == 0:
-                steps = sum(len(e["a"]) for e in new)
-                for ki, k in zip(kinds, TRAINED):
-                    es = [e for e in new if e["kind"] == ki]
-                    if es:
-                        tw.add_scalar(f"collect/success/{k}", np.mean([e["terminal_kind"] == "success" for e in es]), it)
-                    if ki in last:
-                        tw.add_scalar(f"policy/imagined_return/{k}", last[ki]["imagined_return"], it)
-                        tw.add_scalar(f"policy/imagined_reward_sum/{k}", last[ki]["imagined_reward_sum"], it)
-                ms = list(last.values())
-                for tag, key in (("policy/loss", "policy_loss"), ("critic/loss", "critic_loss"), ("policy/grad_norm", "grad_norm"),
-                                 ("policy/held_frac", "held_frac"), ("policy/clamp_frac", "clamp_frac")):
-                    tw.add_scalar(tag, float(np.mean([m[key] for m in ms])), it)
-                with torch.no_grad():
-                    _, wmm = wm_loss(wm, tens(buf.sample_windows(w_cfg["k"], 2048, rng)), w_cfg["k"], metrics=True)
-                tw.add_scalar("wm/loss", wl.item(), it)
-                for key, v in wmm.items():
-                    if key.startswith("kstep_err_pt/"):
-                        tw.add_scalar(f"wm/{key}", v, it)
-                for b, wt in sampler.weights().items():
-                    tw.add_scalar(f"curriculum/weight/{b}", wt, it)
-                tw.add_scalar("sys/gpu_mem_mb", torch.cuda.max_memory_allocated() / 2**20 if dev == "cuda" else 0, it)
-                tw.add_scalar("sys/it_per_s", (it - start) / (time.perf_counter() - t0), it)
-                tw.add_scalar("sys/utd", n / max(steps, 1), it)  # policy updates per collected transition
-                tw.add_scalar("sys/updates", n, it)
-                tw.add_scalar("sys/collect_s", collect_s, it)
-            rec = it % t["video_every"] == 0
-            if it % t["eval_every"] == 0 or rec:
-                _evaluate(it, cfg, a, dirs, L.actor.export(), tw, rec)
-            if it % t["ckpt_every"] == 0:
-                save_ckpt(it)
-        save_ckpt(it)
-    tw.close()
-    return it
+        t0, streak, it, aborted = time.perf_counter(), dict.fromkeys(kinds, 0), start, False
+        done = start
+        try:
+            for it in range(start + 1, a.iters + 1):
+                wts = L.actor.export()
+                tc = time.perf_counter()
+                pending = coll.collect_async(t["episodes_per_iter"], wts, rng_seed=it, sampler=sampler)
+                n, last = 0, {}
+                while n < t["max_updates"] and (n < t["min_updates"] or not pending.ready()):
+                    wm.requires_grad_(True)
+                    wl, _ = wm_loss(wm, tens(buf.sample_windows(w_cfg["k"], w_cfg["batch"], rng)), w_cfg["k"])
+                    opt_w.zero_grad(set_to_none=True)
+                    wl.backward()
+                    torch.nn.utils.clip_grad_norm_(wm.parameters(), w_cfg["grad_clip"])
+                    opt_w.step()
+                    wm.requires_grad_(False)  # imagination must not leave gradients on the world model
+                    k = kinds[n % len(kinds)]
+                    m = last[k] = L.update(buf, rng, (k,))
+                    streak[k] = streak[k] + 1 if out_of_bounds(m, p_cfg["horizon"]) else 0
+                    if streak[k] >= ABORT_STREAK:  # diverged weights go only to actor_abort.npz; ckpt.pt keeps the last good state
+                        aborted = True
+                        save_actor_npz(out / "actor_abort.npz", L.actor.export())
+                        raise SystemExit(f"ABORT it {it}: imagined reward sum or mean V out of bounds for {ABORT_STREAK} updates "
+                                         f"(rsum {m['imagined_reward_sum']:.3g}, V {m['v_mean']:.3g} in {m['v_lo']:.3g}..{m['v_hi']:.3g})")
+                    n += 1
+                new = pending.get()
+                collect_s = time.perf_counter() - tc
+                for e in new:
+                    buf.add(e)
+                sampler.update(new)
+                save_actor_npz(out / "actor.npz", L.actor.export())
+                if it % t["log_every"] == 0:
+                    steps = sum(len(e["a"]) for e in new)
+                    for ki, k in zip(kinds, TRAINED):
+                        es = [e for e in new if e["kind"] == ki]
+                        if es:
+                            tw.add_scalar(f"collect/success/{k}", np.mean([e["terminal_kind"] == "success" for e in es]), it)
+                        if ki in last:
+                            tw.add_scalar(f"policy/imagined_return/{k}", last[ki]["imagined_return"], it)
+                            tw.add_scalar(f"policy/imagined_reward_sum/{k}", last[ki]["imagined_reward_sum"], it)
+                    ms = list(last.values())
+                    for tag, key in (("policy/loss", "policy_loss"), ("critic/loss", "critic_loss"), ("policy/grad_norm", "grad_norm"),
+                                     ("policy/held_frac", "held_frac"), ("policy/clamp_frac", "clamp_frac")):
+                        tw.add_scalar(tag, float(np.mean([m[key] for m in ms])), it)
+                    with torch.no_grad():
+                        _, wmm = wm_loss(wm, tens(buf.sample_windows(w_cfg["k"], 2048, rng)), w_cfg["k"], metrics=True)
+                    tw.add_scalar("wm/loss", wl.item(), it)
+                    for key, v in wmm.items():
+                        if key.startswith("kstep_err_pt/"):
+                            tw.add_scalar(f"wm/{key}", v, it)
+                    for b, wt in sampler.weights().items():
+                        tw.add_scalar(f"curriculum/weight/{b}", wt, it)
+                    tw.add_scalar("sys/gpu_mem_mb", torch.cuda.max_memory_allocated() / 2**20 if dev == "cuda" else 0, it)
+                    tw.add_scalar("sys/it_per_s", (it - start) / (time.perf_counter() - t0), it)
+                    tw.add_scalar("sys/utd", n / max(steps, 1), it)  # policy updates per collected transition
+                    tw.add_scalar("sys/updates", n, it)
+                    tw.add_scalar("sys/collect_s", collect_s, it)
+                rec = it % t["video_every"] == 0
+                if it % t["eval_every"] == 0 or rec:
+                    _evaluate(it, cfg, a, dirs, L.actor.export(), tw, rec)
+                done = it
+                if it % t["ckpt_every"] == 0:
+                    save_ckpt(it)
+        finally:
+            if not aborted:
+                save_ckpt(done)
+            tw.close()
+    return done
 
 
 def main(argv=None):
