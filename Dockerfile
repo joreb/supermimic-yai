@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libosmesa6 libgl1 git ffmpeg && rm -rf /var/lib/apt/lists/*
+    libosmesa6 libgl1 libglfw3 git ffmpeg && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir mujoco==3.3.5 gymnasium==1.4.0 trimesh==5.2.0 manifold3d==3.5.4 coacd==1.0.14 \
     imageio==2.38.1 imageio-ffmpeg==0.6.0 pyyaml==6.0.3 numpy==2.5.4 pytest==9.1.1 \
     python-fcl==0.7.0.11 scipy==1.18.1

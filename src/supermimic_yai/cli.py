@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import sys
 from pathlib import Path
 
@@ -22,7 +23,14 @@ def main(argv=None) -> int:
     r.add_argument("--video", type=Path)
     r.add_argument("--controller", choices=["scripted", "learned"], default="scripted")
     r.add_argument("--actor", type=Path, help="actor .npz (required for --controller learned)")
+    r.add_argument("--viewer", action="store_true", help="watch live in a MuJoCo window (needs a display, e.g. WSLg)")
     a = ap.parse_args(argv)
+    if a.viewer:
+        from supermimic_yai.viewer import has_display
+        if not has_display():
+            print("error: --viewer needs a display; pass -e DISPLAY -e WAYLAND_DISPLAY -e XDG_RUNTIME_DIR "
+                  "-v /tmp/.X11-unix:/tmp/.X11-unix -v /mnt/wslg:/mnt/wslg (WSLg)", file=sys.stderr)
+            return 2
     if a.controller == "learned" and a.actor is None:
         print("error: --controller learned needs --actor PATH.npz", file=sys.stderr)
         return 2
@@ -50,7 +58,11 @@ def main(argv=None) -> int:
         from supermimic_yai.npmlp import load_actor_npz
         from supermimic_yai.runner import LearnedController
         ctrl = LearnedController(load_actor_npz(a.actor), load_config("laptop")["action_scale"])
-    log = execute(env, recipe, record=a.video is not None, controller=ctrl)
+    with contextlib.ExitStack() as stack:
+        if a.viewer:
+            from supermimic_yai.viewer import watch
+            stack.enter_context(watch(env))
+        log = execute(env, recipe, record=a.video is not None, controller=ctrl)
     tags = ctrl.tags if ctrl else ["scripted"] * len(log.results)
     for line, res, tag in zip(lines, log.results, tags):
         print(f"{line} [{tag}]: {'ok' if res.ok else 'FAILED (' + res.reason + ')'} [{res.sim_time:.2f} s]")
