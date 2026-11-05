@@ -33,14 +33,14 @@ Locally installed, the same command is `supermimic run-recipe ...`. Reference re
 
 ## Train
 
-Dyna-style training of the learned controller from the Plan 2a world model (`--init` dir holds `episodes.npz` and `model.pt`). B and C are held out: never trained on, only evaluated. `--arm` is required; `--set key=val` overrides any config value. On the laptop GPU (GTX 1050, 4 GB) use `--set episodes_per_iter=8`.
+Dyna-style training of the learned controller from the Plan 2a world model (`--init` dir holds `episodes.npz` and `model.pt`). B and C are held out: never trained on, only evaluated. `--arm` is required; `--set key=val` overrides any config value. On the laptop GPU (GTX 1050, 4 GB) use `--set train.episodes_per_iter=8`.
 
 ```
 docker run --rm --gpus all -p 6006:6006 -v "$PWD":/work -w /work supermimic-yai \
   python -m supermimic_yai.train --config laptop --arm arms/panda --init runs/wm \
   --products products/product_a --heldout products/product_b products/product_c \
   --bank runs/train/bank_a.npz --eval-banks runs/eval/bank_b.npz runs/eval/bank_c.npz \
-  --iters 200 --set episodes_per_iter=8
+  --iters 200 --set train.episodes_per_iter=8
 ```
 
 Add `--resume` to continue from the last checkpoint. Watch curves and eval videos in a second container:
@@ -70,7 +70,7 @@ Open a MuJoCo window (WSLg) that follows the recipe in real time. Without `DISPL
 ```
 docker run --rm --gpus all -e DISPLAY -e WAYLAND_DISPLAY -e XDG_RUNTIME_DIR \
   -v /tmp/.X11-unix:/tmp/.X11-unix -v /mnt/wslg:/mnt/wslg -v "$PWD":/work -w /work supermimic-yai \
-  python -m supermimic_yai.cli run-recipe products/product_a recipes/product_a.json --viewer
+  python -m supermimic_yai.cli run-recipe products/product_a recipes/product_a.json --arm arms/panda --viewer
 ```
 
 Add `--controller learned --actor runs/train/actor.npz` to watch the trained policy. Rebuild the image once (`docker build -t supermimic-yai .`) to pick up `libglfw3`.

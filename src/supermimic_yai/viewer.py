@@ -11,8 +11,8 @@ def has_display() -> bool:
 
 @contextlib.contextmanager
 def watch(env):
-    """Open a passive viewer and sync it after every control step, paced to real time."""
-    os.environ["MUJOCO_GL"] = "glfw"
+    """Open a passive viewer and sync it after every control step, paced to real time.
+    cli sets MUJOCO_GL=glfw before mujoco is imported."""
     import mujoco.viewer
 
     dt = env.substeps * env.model.opt.timestep
@@ -21,8 +21,9 @@ def watch(env):
         def synced(action):
             t = time.perf_counter()
             out = step(action)
-            v.sync()
-            time.sleep(max(0.0, dt - (time.perf_counter() - t)))
+            if v.is_running():  # window closed: let the recipe finish headless
+                v.sync()
+                time.sleep(max(0.0, dt - (time.perf_counter() - t)))
             return out
         env.step = synced
         try:

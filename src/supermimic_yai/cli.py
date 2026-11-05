@@ -1,15 +1,8 @@
 import argparse
 import contextlib
+import os
 import sys
 from pathlib import Path
-
-from supermimic_yai.arm import ArmError, load_arm
-from supermimic_yai.config import load_config
-from supermimic_yai.env import AssemblyEnv
-from supermimic_yai.product import ProductError, load_product
-from supermimic_yai.score import score
-from supermimic_yai.scripted import execute
-from supermimic_yai.tokens import RecipeError, describe, load_recipe
 
 
 def main(argv=None) -> int:
@@ -31,9 +24,18 @@ def main(argv=None) -> int:
             print("error: --viewer needs a display; pass -e DISPLAY -e WAYLAND_DISPLAY -e XDG_RUNTIME_DIR "
                   "-v /tmp/.X11-unix:/tmp/.X11-unix -v /mnt/wslg:/mnt/wslg (WSLg)", file=sys.stderr)
             return 2
+        os.environ["MUJOCO_GL"] = "glfw"  # before any mujoco import: the image default (osmesa) would bind the GL loader
     if a.controller == "learned" and a.actor is None:
         print("error: --controller learned needs --actor PATH.npz", file=sys.stderr)
         return 2
+
+    from supermimic_yai.arm import load_arm
+    from supermimic_yai.config import load_config
+    from supermimic_yai.env import AssemblyEnv
+    from supermimic_yai.product import load_product
+    from supermimic_yai.score import score
+    from supermimic_yai.scripted import execute
+    from supermimic_yai.tokens import describe, load_recipe
 
     arm_dir = a.arm
     if arm_dir is None:
