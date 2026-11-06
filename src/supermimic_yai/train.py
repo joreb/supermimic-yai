@@ -10,6 +10,7 @@ Torch is imported inside run(): spawned collector workers re-import this module 
 """
 import argparse
 import json
+import signal
 import time
 from pathlib import Path
 
@@ -58,6 +59,16 @@ def _evaluate(it, cfg, a, dirs, w, tw, record):
 
 
 def run(a):
+    def _term(*_):
+        raise KeyboardInterrupt  # docker stop: unwind through the loop's finally, which saves the last completed iteration
+    old = signal.signal(signal.SIGTERM, _term)
+    try:
+        return _run(a)
+    finally:
+        signal.signal(signal.SIGTERM, old)
+
+
+def _run(a):
     cfg = load_config(a.config)
     for kv in a.set:
         k, v = kv.split("=", 1)

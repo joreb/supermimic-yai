@@ -1,5 +1,8 @@
+import os
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -117,6 +120,27 @@ def test_abort_keeps_last_good_ckpt(setup, tmp_path, monkeypatch):
     assert (tmp_path / "actor_abort.npz").exists()
     assert (tmp_path / "ckpt.pt").read_bytes() == good
     assert torch.load(tmp_path / "ckpt.pt", weights_only=False)["it"] == 1
+
+
+def test_sigterm_saves_final_ckpt(setup, tmp_path):
+    import torch
+    cmd = [sys.executable, "-m", "supermimic_yai.train"] + args(setup, tmp_path, 1000, "--set", "train.ckpt_every=1000", "--set", "train.eval_every=1000")
+    pr = subprocess.Popen(cmd, env={**os.environ, "PYTHONPATH": str(ROOT / "src")}, cwd=ROOT)
+    t0 = time.time()
+    while time.time() - t0 < 600 and pr.poll() is None and not (tmp_path.exists() and any(tmp_path.glob("events*")) and _steps(tmp_path) >= 2):
+        time.sleep(2)
+    assert pr.poll() is None
+    pr.send_signal(signal.SIGTERM)
+    pr.wait(timeout=300)
+    ck = torch.load(tmp_path / "ckpt.pt", weights_only=False)["it"]  # ckpt_every=1000: only the final save can write this
+    assert ck >= 2 and _steps(tmp_path) - 1 <= ck <= _steps(tmp_path)
+
+
+def _steps(path):
+    try:
+        return max(_scalar_steps(path, "wm/loss"), default=0)
+    except KeyError:
+        return 0
 
 
 def test_import_pulls_no_torch():
