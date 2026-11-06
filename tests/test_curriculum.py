@@ -103,3 +103,9 @@ def test_state_roundtrip():
     b = ResetSampler(bank, 0.99)
     b.load_state_dict(pickle.loads(pickle.dumps(a.state_dict())))
     assert a.weights() == b.weights()
+
+
+def test_state_dict_has_no_dead_counter_and_loads_old():
+    sm = ResetSampler(mk({0: "INSERT"}), 0.99)
+    assert set(sm.state_dict()) == {"G", "wsum"}
+    sm.load_state_dict({"G": {}, "wsum": {0: 0.0}, "n": 7})

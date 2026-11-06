@@ -12,7 +12,7 @@ class ResetSampler:
             self.kind[s.step] = s.token
             self.members.setdefault(s.step, []).append(i)
         self.bins = sorted(self.members)
-        self.G, self.wsum, self.n = {}, {b: 0.0 for b in self.bins}, 0
+        self.G, self.wsum = {}, {b: 0.0 for b in self.bins}
 
     def _soft(self):
         """Per-kind softmax(-temp * G_hat), each kind block scaled by its share of bins."""
@@ -47,7 +47,6 @@ class ResetSampler:
             self.G[b] = g if b not in self.G else (1 - self.ema) * self.G[b] + self.ema * g
         for b, x in self._soft().items():
             self.wsum[b] += x
-        self.n += 1
 
     def __call__(self, rng, bank):
         assert len(bank) == self.n_bank, "sampler was built for a different bank"  # indices come from construction
@@ -56,7 +55,7 @@ class ResetSampler:
         return self.members[b][int(rng.integers(len(self.members[b])))]
 
     def state_dict(self):
-        return {"G": dict(self.G), "wsum": dict(self.wsum), "n": self.n}
+        return {"G": dict(self.G), "wsum": dict(self.wsum)}
 
     def load_state_dict(self, d):
-        self.G, self.wsum, self.n = dict(d["G"]), dict(d["wsum"]), d["n"]
+        self.G, self.wsum = dict(d["G"]), dict(d["wsum"])  # old checkpoints also carry "n"
