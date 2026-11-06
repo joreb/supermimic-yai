@@ -36,7 +36,7 @@ Locally installed, the same command is `supermimic run-recipe ...`. Reference re
 Dyna-style training of the learned controller from the Plan 2a world model (`--init` dir holds `episodes.npz` and `model.pt`). B and C are held out: never trained on, only evaluated. `--arm` is required; `--set key=val` overrides any config value. On the laptop GPU (GTX 1050, 4 GB) use `--set train.episodes_per_iter=8`.
 
 ```
-docker run --rm --gpus all -p 6006:6006 -v "$PWD":/work -w /work supermimic-yai \
+docker run --rm --gpus all -v "$PWD":/work -w /work supermimic-yai \
   python -m supermimic_yai.train --config laptop --arm arms/panda --init runs/wm \
   --products products/product_a --heldout products/product_b products/product_c \
   --bank runs/wm/bank.npz --eval-banks runs/eval/bank_a.npz runs/eval/bank_b.npz runs/eval/bank_c.npz \
@@ -50,7 +50,7 @@ docker run --rm -p 6006:6006 -v "$PWD":/work -w /work supermimic-yai \
   tensorboard --logdir runs --bind_all --port 6006
 ```
 
-then open http://localhost:6006 (publish the port on whichever container runs TensorBoard).
+then open http://localhost:6006.
 
 ## Evaluate
 
@@ -61,7 +61,7 @@ docker run --rm --gpus all -v "$PWD":/work -w /work supermimic-yai \
   python tools/eval.py --actor runs/train/actor.npz --seeds 20
 ```
 
-Results land in `runs/eval/results.md`.
+Learned kinds default to the ones stored in the actor file (a trained `actor.npz`: GRASP, ALIGN and INSERT; the older `runs/bc/actor.npz`: GRASP only, as is any actor saved before this field existed, e.g. `runs/train9/actor.npz`, which needs `--learned-kinds GRASP ALIGN INSERT`); `--learned-kinds` overrides, and the table's controller column says which kinds ran learned. Results land in `runs/eval/results.md`.
 
 ## Watch live
 
@@ -73,11 +73,11 @@ docker run --rm --gpus all -e DISPLAY -e WAYLAND_DISPLAY -e XDG_RUNTIME_DIR \
   python -m supermimic_yai.cli run-recipe products/product_a recipes/product_a.json --arm arms/panda --viewer
 ```
 
-Add `--controller learned --actor runs/train/actor.npz` to watch the trained policy. Rebuild the image once (`docker build -t supermimic-yai .`) to pick up `libglfw3`.
+Add `--controller learned --actor runs/train/actor.npz` to watch the trained policy: the kinds stored in the actor file run learned (for a trained actor, GRASP, ALIGN and INSERT; PLACE and PRESS stay scripted), the rest scripted; each step line is tagged `[learned]` or `[scripted]`. `--learned-kinds` overrides. Rebuild the image once (`docker build -t supermimic-yai .`) to pick up `libglfw3`.
 
 ## Results
 
-Laptop run (GTX 1050, 4 GB): `train` command above with `--iters 1000 --set train.episodes_per_iter=8`, logdir `runs/train9`, killed at the 12 h wall-clock cap (SIGKILL after `docker stop`, so no final save; about 12 h wall-clock, 1189 MiB GPU memory). The last checkpoint is iteration 450. Evaluation: `tools/eval.py --seeds 50` on EVAL seeds, learned kinds GRASP/ALIGN/INSERT; PLACE and PRESS are scripted in every column. "BC" is the behaviour-cloning warm start (`actor_bc.npz`), "trained" is the final Dyna-trained actor.
+Laptop run (GTX 1050, 4 GB): `train` command above with `--iters 1000 --set train.episodes_per_iter=8`, logdir `runs/train9`, killed at the 12 h wall-clock cap (SIGKILL after `docker stop`, so no final save; fixed since in d134670: SIGTERM now saves a final checkpoint, so `--resume` loses nothing; about 12 h wall-clock, 1189 MiB GPU memory). The last checkpoint is iteration 450. Evaluation: `tools/eval.py --seeds 50` on EVAL seeds, learned kinds GRASP/ALIGN/INSERT (the actor's stored kinds). Per-token rows use 50 start states from the 20-seed EVAL banks (C ALIGN has 48); full-recipe rows use 50 EVAL seeds; PLACE and PRESS are scripted in every column. "BC" is the behaviour-cloning warm start (`actor_bc.npz`), "trained" is the final Dyna-trained actor.
 
 | product | token | scripted | BC | trained |
 |---|---|---|---|---|
