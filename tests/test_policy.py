@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from supermimic_yai.npmlp import actor_forward, load_actor_npz, save_actor_npz
+from supermimic_yai.npmlp import actor_forward, learned_kinds, load_actor_npz, save_actor_npz
 from supermimic_yai.policy import Actor, Critic
 
 S, G, A, K = 31, 3, 8, 3
@@ -63,3 +63,9 @@ def test_npz_without_kinds_is_grasp_only(tmp_path):
     del z["kinds"]
     np.savez(tmp_path / "old.npz", **z)
     assert load_actor_npz(tmp_path / "old.npz")["kinds"] == ("GRASP",)
+
+
+def test_no_actor_means_no_learned_kinds():
+    """A scripted run must not label an overridden kind as learned."""
+    assert learned_kinds(None, ("GRASP",)) == ()
+    assert learned_kinds({"kinds": ("ALIGN",)}, ("GRASP",)) == ("GRASP",)

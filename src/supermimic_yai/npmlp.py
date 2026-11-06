@@ -42,4 +42,6 @@ def load_actor_npz(path) -> dict:
 
 def learned_kinds(w, override=None):
     """Kinds the actor drives: the override, else the ones stored with it; none without an actor."""
-    return tuple(override) if override is not None else tuple(w.get("kinds", ())) if w else ()
+    if not w:
+        return ()
+    return tuple(override) if override is not None else tuple(w.get("kinds", ()))
