@@ -39,7 +39,7 @@ Dyna-style training of the learned controller from the Plan 2a world model (`--i
 docker run --rm --gpus all -p 6006:6006 -v "$PWD":/work -w /work supermimic-yai \
   python -m supermimic_yai.train --config laptop --arm arms/panda --init runs/wm \
   --products products/product_a --heldout products/product_b products/product_c \
-  --bank runs/train/bank_a.npz --eval-banks runs/eval/bank_b.npz runs/eval/bank_c.npz \
+  --bank runs/wm/bank.npz --eval-banks runs/eval/bank_a.npz runs/eval/bank_b.npz runs/eval/bank_c.npz \
   --iters 200 --set train.episodes_per_iter=8
 ```
 
@@ -77,7 +77,7 @@ Add `--controller learned --actor runs/train/actor.npz` to watch the trained pol
 
 ## Results
 
-Laptop run (GTX 1050, 4 GB): `train` command above with `--iters 1000 --set train.episodes_per_iter=8`, logdir `runs/train9`, stopped at the 12 h wall-time cap (about 12.1 h, about 12 GPU-hours, 1.3 GB GPU memory) after about 450 iterations (last logged eval at 450). Evaluation: `tools/eval.py --seeds 50` on EVAL seeds, learned kinds GRASP/ALIGN/INSERT; PLACE and PRESS are scripted in every column. "BC" is the behaviour-cloning warm start (`actor_bc.npz`), "trained" is the final Dyna-trained actor.
+Laptop run (GTX 1050, 4 GB): `train` command above with `--iters 1000 --set train.episodes_per_iter=8`, logdir `runs/train9`, killed at the 12 h wall-clock cap (SIGKILL after `docker stop`, so no final save; about 12 h wall-clock, 1189 MiB GPU memory). The last checkpoint is iteration 450. Evaluation: `tools/eval.py --seeds 50` on EVAL seeds, learned kinds GRASP/ALIGN/INSERT; PLACE and PRESS are scripted in every column. "BC" is the behaviour-cloning warm start (`actor_bc.npz`), "trained" is the final Dyna-trained actor.
 
 | product | token | scripted | BC | trained |
 |---|---|---|---|---|
@@ -97,9 +97,9 @@ Laptop run (GTX 1050, 4 GB): `train` command above with `--iters 1000 --set trai
 | C | PLACE, PRESS | scripted | scripted | scripted |
 | C | **full recipe** | 0.46 | 0.00 | 0.00 |
 
-**Outcome against targets: missed.** Product A full-recipe success is 0 % for the learned controllers (target 80 %); held-out B and C are 0 % (target 50 %). `eval/recipe_success` for A stayed at 0 throughout training, so the plateau rule never fired. The BC warm start is the best learned actor (A tokens 62-64 %, B 26-40 %, C 8-22 %) and Dyna updates made it worse: trained-actor token success is 0 % everywhere (A GRASP peaked at 13 % at iteration 300, then fell). This is the failure predicted in issue #6: the imagination horizon H=32 at 50 Hz is shorter than a grasp, so imagined returns cannot credit a completed grasp and policy updates degrade the learned behaviour. Nothing in `src/` was retuned. The scripted baseline stays the only controller that finishes recipes (A 98 %, B 90 %, C 46 %; C INSERT is the weak token).
+**Outcome against targets: missed.** Product A full-recipe success is 0 % for the learned controllers (target 80 %); held-out B and C are 0 % (target 50 %). `eval/recipe_success` for A stayed at 0 throughout training, so the plateau rule never fired. The BC warm start (2000 iterations shared over GRASP, ALIGN and INSERT, so lower than the GRASP-only actor of the earlier BC task; not re-run) is the best learned actor (A tokens 62-64 %, B 26-40 %, C 8-22 %) and Dyna updates made it worse: trained-actor token success is 0 % everywhere (A GRASP peaked at 13 % at iteration 300, then fell). Likely causes, not separated by an experiment: issue #6 (the imagination horizon H=32 at 50 Hz is shorter than a grasp, so imagined returns cannot credit a completed grasp) and world-model drift (below). Nothing in `src/` was retuned. The scripted baseline stays the only controller that finishes recipes (A 98 %, B 90 %, C 46 %; C INSERT is the weak token).
 
-World model at the end (iteration 450): `wm/kstep_err_pt` (held-out k-step part-position error, metres) GRASP 0.0096, ALIGN 0.029, INSERT 0.024; `wm/loss` is 1.4e4 and rose during training (cause not investigated). No existing tool re-evaluates the model without src changes, so these are the training-time logged values.
+World model at the end (iteration 450): logged `wm/kstep_err_pt` is k=8 error on the replay window, not held-out: GRASP 0.7 mm at iteration 10 rising to 9.6 mm, ALIGN 29 mm, INSERT 24 mm, against about 1 mm in Plan 2a. `wm/loss` rose to 1.4e4. Likely cause: the world-model normalisation was fixed from Plan 2a scripted data and never refit as the replay shifted to learned-policy data (train.py). Not verified.
 
 GIFs show the BC actor (the better learned actor) on seed 0: `media/learned_a.gif` (A), `media/learned_b.gif` (B). Neither completes the recipe.
 
