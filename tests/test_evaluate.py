@@ -29,7 +29,7 @@ def test_log_video_smoke(tmp_path):
 
 def test_results_markdown_labels_scripted():
     toks = {("a", k): {"success": 1.0, "n": 2, "terminal": {}} for k in ("GRASP", "ALIGN")}
-    md = results_markdown(toks, {"a": {"success": 0.5, "per_token": [1.0, 0.5], "frames": None}})
+    md = results_markdown(toks, {"a": {"success": 0.5, "per_token": [1.0, 0.5], "frames": None}}, learned_kinds=("GRASP",))
     rows = {l.split("|")[2].strip(): l.split("|")[3].strip() for l in md.splitlines() if l.startswith("| a |")}
     assert rows["GRASP"] == "learned" and rows["ALIGN"] == "scripted"
     assert rows["PLACE"] == rows["PRESS"] == "scripted"

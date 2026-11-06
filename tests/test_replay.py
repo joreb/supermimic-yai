@@ -59,3 +59,14 @@ def test_config():
     assert c["wm"]["width"] == 512 and c["wm"]["k"] == 8 and c["collect"]["workers"] >= 1
     assert load_config("big-gpu")["wm"]["batch"] == 2048 * 10
     assert c["replay"]["capacity"] == 400000 and load_config("big-gpu")["policy"]["batch"] == 4096
+
+
+def test_product_roundtrips_and_legacy_loads(tmp_path):
+    from supermimic_yai.replay import load_episodes, save_episodes
+    e = {"s": np.zeros((3, 2)), "a": np.zeros((2, 1)), "r": np.zeros(2), "done": np.zeros(2, bool), "unstable": np.zeros(2, bool),
+         "goal": np.zeros(3), "ctx": np.zeros(4), "kind": 0, "terminal_kind": "timeout", "product": "p"}
+    save_episodes(tmp_path / "e.npz", [e, e])
+    assert [x["product"] for x in load_episodes(tmp_path / "e.npz")] == ["p", "p"]
+    z = {k: v for k, v in np.load(tmp_path / "e.npz").items() if k != "product"}
+    np.savez(tmp_path / "old.npz", **z)
+    assert "product" not in load_episodes(tmp_path / "old.npz")[0]

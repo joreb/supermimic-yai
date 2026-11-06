@@ -49,7 +49,17 @@ def test_critic_shape():
 
 def test_npz_roundtrip(tmp_path):
     w = _actor().export()
-    save_actor_npz(tmp_path / "a.npz", w)
+    save_actor_npz(tmp_path / "a.npz", w, ("GRASP", "INSERT"))
     w2 = load_actor_npz(tmp_path / "a.npz")
+    assert w2["kinds"] == ("GRASP", "INSERT")
     s, g = np.random.randn(S), np.random.randn(G)
     assert all(np.array_equal(actor_forward(w, s, g, k), actor_forward(w2, s, g, k)) for k in range(K))
+
+
+def test_npz_without_kinds_is_grasp_only(tmp_path):
+    """Legacy files (e.g. the Plan 2b BC actor) predate the kinds array."""
+    save_actor_npz(tmp_path / "a.npz", _actor().export(), ("ALIGN",))
+    z = dict(np.load(tmp_path / "a.npz"))
+    del z["kinds"]
+    np.savez(tmp_path / "old.npz", **z)
+    assert load_actor_npz(tmp_path / "old.npz")["kinds"] == ("GRASP",)

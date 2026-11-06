@@ -60,7 +60,7 @@ def test_learned_kinds_routes_scripted(monkeypatch):
     monkeypatch.setattr(R, "run_contact_token", lambda env, tok, held, weights, scale: seen.append((tok.kind, weights)) or ("r", held))
     monkeypatch.setattr(R, "run_token", lambda env, tok, held: seen.append((tok.kind, "token")) or ("r", held))
     env, recipe = _setup()
-    ctrl = R.LearnedController(w, 0.05)
+    ctrl = R.LearnedController(w, 0.05, ("GRASP",))
     for kind in ("GRASP", "ALIGN", "MOVE_ABOVE"):
         ctrl(env, next(t for t in recipe.steps if t.kind == kind), None)
     assert seen == [("GRASP", w), ("ALIGN", None), ("MOVE_ABOVE", "token")]
@@ -135,3 +135,14 @@ def test_held_move_converges_when_part_slips_in_grip(monkeypatch):
     monkeypatch.setattr(S._Run, "tick", slip)
     res, held = run_token(env, recipe.steps[4], held)
     assert res.ok, res.reason
+
+
+def test_learned_kinds_default_to_actor_kinds(monkeypatch):
+    w, seen = {"kinds": ("GRASP", "ALIGN")}, []
+    monkeypatch.setattr(R, "run_contact_token", lambda env, tok, held, weights, scale: seen.append((tok.kind, weights)) or ("r", held))
+    env, recipe = _setup()
+    ctrl = R.LearnedController(w, 0.05)
+    for kind in ("GRASP", "ALIGN", "INSERT"):
+        ctrl(env, next(t for t in recipe.steps if t.kind == kind), None)
+    assert seen == [("GRASP", w), ("ALIGN", w), ("INSERT", None)]
+    assert R.LearnedController(w, 0.05, ("INSERT",)).kinds == ("INSERT",)

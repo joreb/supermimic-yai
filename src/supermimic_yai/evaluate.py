@@ -1,5 +1,4 @@
 """Per-token and full-recipe evaluation of the learned controller against the scripted one (EVAL seeds, zero noise)."""
-import json
 from collections import Counter
 from pathlib import Path
 
@@ -7,16 +6,14 @@ import numpy as np
 
 from supermimic_yai import seeds as seedmod
 from supermimic_yai.collect import Collector
-from supermimic_yai.startbank import load_bank, resolve_recipe
+from supermimic_yai.npmlp import learned_kinds as _kinds
+from supermimic_yai.startbank import load_bank, assembly_name, resolve_recipe
 
 
-def _name(d):
-    return json.loads((Path(d) / "assembly.json").read_text())["name"]
-
-
-def eval_tokens(cfg, arm_dir, pdirs, bank_path, weights, n_per_kind, rng_seed=0, learned_kinds=("GRASP",)):
-    """-> {(product, kind): {"success", "n", "terminal"}}. Kinds outside learned_kinds run scripted (weights=None)."""
-    names = [_name(d) for d in pdirs]
+def eval_tokens(cfg, arm_dir, pdirs, bank_path, weights, n_per_kind, rng_seed=0, learned_kinds=None):
+    """-> {(product, kind): {"success", "n", "terminal"}}. Kinds outside learned_kinds (default: the actor's own) run scripted (weights=None)."""
+    learned_kinds = _kinds(weights, learned_kinds)
+    names = [assembly_name(d) for d in pdirs]
     kinds = sorted({s.token for s in load_bank(bank_path) if s.product in names})
     out = {}
     for kind in kinds:
@@ -36,7 +33,7 @@ def eval_tokens(cfg, arm_dir, pdirs, bank_path, weights, n_per_kind, rng_seed=0,
     return out
 
 
-def eval_recipes(arm_dir, pdirs, weights, seeds, record_first=False, action_scale=0.05, learned_kinds=("GRASP",)):
+def eval_recipes(arm_dir, pdirs, weights, seeds, record_first=False, action_scale=0.05, learned_kinds=None):
     """-> {product: {"success", "per_token", "frames"}}; weights=None runs the plain scripted recipe."""
     from supermimic_yai.arm import load_arm
     from supermimic_yai.env import AssemblyEnv
@@ -67,7 +64,7 @@ def eval_recipes(arm_dir, pdirs, weights, seeds, record_first=False, action_scal
     return out
 
 
-def results_markdown(tokens, recipes, scripted_kinds=("PLACE", "PRESS"), learned_kinds=("GRASP",)):
+def results_markdown(tokens, recipes, learned_kinds, scripted_kinds=("PLACE", "PRESS")):
     """Tables with a controller column: 'learned' only for kinds in learned_kinds (and never a scripted kind)."""
     ctl = lambda k: "learned" if k in learned_kinds and k not in scripted_kinds else "scripted"  # noqa: E731
     rows = ["| product | token kind | controller | success | n |", "|---|---|---|---|---|"]

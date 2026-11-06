@@ -2,7 +2,7 @@
 import numpy as np
 
 from supermimic_yai.collect import _Recorder, _Stop
-from supermimic_yai.npmlp import actor_forward
+from supermimic_yai.npmlp import actor_forward, learned_kinds as _kinds
 from supermimic_yai.scripted import TokenResult, capture_frame, run_token
 from supermimic_yai.task import DROP_STEPS, TOKEN_KINDS, TokenEpisode, budget_steps
 
@@ -35,8 +35,8 @@ def run_contact_token(env, tok, held, weights, action_scale):
 class LearnedController:
     """Actor drives contact tokens whose kind is in learned_kinds; other contact tokens run scripted, all else run_token."""
 
-    def __init__(self, weights, action_scale, learned_kinds=("GRASP",)):
-        self.weights, self.scale, self.kinds, self.tags = weights, action_scale, learned_kinds, []
+    def __init__(self, weights, action_scale, learned_kinds=None):
+        self.weights, self.scale, self.kinds, self.tags = weights, action_scale, _kinds(weights, learned_kinds), []
 
     def __call__(self, env, tok, held):
         if tok.kind not in TOKEN_KINDS:

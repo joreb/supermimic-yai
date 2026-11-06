@@ -10,7 +10,7 @@ import torch
 from fit_wm import split
 
 from supermimic_yai.replay import buffer_from, load_episodes
-from supermimic_yai.task import TOKEN_KINDS
+from supermimic_yai.task import _EXTRA, TOKEN_KINDS
 from supermimic_yai.wm import gate_errors, load_wm, rollout
 
 
@@ -25,7 +25,7 @@ def main():
     sd, ad, cd = val[0]["s"].shape[1], val[0]["a"].shape[1], val[0]["ctx"].shape[0]
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     model = load_wm(a.model, sd, ad, cd, dev)
-    n = (sd - 17) // 2
+    n = (sd - _EXTRA) // 2
     print(f"held-out episodes {len(val)}; errors in mm, pt = part-to-target, held = held part rel EE")
     print("H    windows  " + "  ".join(f"{k}:pt/held" for k in TOKEN_KINDS))
     for H in a.H:

@@ -17,7 +17,6 @@ reward and terminal conditions are exactly the policy-rollout ones). The gripper
 Policy rollouts feed actor_forward(weights, s, goal, kind) (+ the same arm noise; gripper already in [0, 1]).
   step int recipe step index of the start state | start_idx int index into Collector.bank
 """
-import json
 import multiprocessing as mp
 from collections import OrderedDict
 from pathlib import Path
@@ -25,7 +24,7 @@ from pathlib import Path
 import numpy as np
 
 from supermimic_yai.npmlp import actor_forward
-from supermimic_yai.startbank import load_bank, resolve_recipe
+from supermimic_yai.startbank import load_bank, assembly_name, resolve_recipe
 from supermimic_yai.task import TOKEN_KINDS, TokenEpisode, budget_steps, involved_context
 
 _G = {}  # per-worker state
@@ -152,8 +151,7 @@ class _Pending:
 class Collector:
     def __init__(self, cfg, arm_dir, dirs, bank_path, kinds=None):
         self.noises, self.workers = cfg["collect"]["action_noise"], cfg["collect"]["workers"]
-        products = {json.loads((Path(d) / "assembly.json").read_text())["name"]: (str(d), str(resolve_recipe(d)))
-                    for d in dirs}
+        products = {assembly_name(d): (str(d), str(resolve_recipe(d))) for d in dirs}
         self.bank = [s for s in load_bank(bank_path) if s.product in products and (kinds is None or s.token in kinds)]
         if not self.bank:
             raise ValueError("start-state bank has no states for these products/kinds")

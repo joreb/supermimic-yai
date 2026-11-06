@@ -60,6 +60,7 @@ def save_episodes(path, eps):
         d[k] = np.stack([e[k] for e in eps])
     d["kind"] = np.array([e["kind"] for e in eps])
     d["terminal_kind"] = np.array([e["terminal_kind"] for e in eps])
+    d["product"] = np.array([e["product"] for e in eps])
     np.savez_compressed(path, **d)
 
 
@@ -69,7 +70,8 @@ def load_episodes(path):
         sl, s0 = slice(i, i + T), i + j
         eps.append({"s": d["s"][s0:s0 + T + 1], **{k: d[k][sl] for k in ("a", "r", "done", "unstable")},
                     "goal": d["goal"][j], "ctx": d["ctx"][j], "kind": int(d["kind"][j]),
-                    "terminal_kind": str(d["terminal_kind"][j])})
+                    "terminal_kind": str(d["terminal_kind"][j]),
+                    **({"product": str(d["product"][j])} if "product" in d else {})})  # legacy files have no product
         i += T
     return eps
 

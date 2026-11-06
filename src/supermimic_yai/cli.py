@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 def main(argv=None) -> int:
+    from supermimic_yai.task import TOKEN_KINDS
     ap = argparse.ArgumentParser(prog="supermimic")
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run-recipe")
@@ -16,6 +17,7 @@ def main(argv=None) -> int:
     r.add_argument("--video", type=Path)
     r.add_argument("--controller", choices=["scripted", "learned"], default="scripted")
     r.add_argument("--actor", type=Path, help="actor .npz (required for --controller learned)")
+    r.add_argument("--learned-kinds", nargs="+", choices=TOKEN_KINDS, help="default: the kinds stored in the actor file")
     r.add_argument("--viewer", action="store_true", help="watch live in a MuJoCo window (needs a display, e.g. WSLg)")
     a = ap.parse_args(argv)
     if a.viewer:
@@ -59,7 +61,7 @@ def main(argv=None) -> int:
     if a.controller == "learned":
         from supermimic_yai.npmlp import load_actor_npz
         from supermimic_yai.runner import LearnedController
-        ctrl = LearnedController(load_actor_npz(a.actor), load_config("laptop")["action_scale"])
+        ctrl = LearnedController(load_actor_npz(a.actor), load_config("laptop")["action_scale"], a.learned_kinds)
     with contextlib.ExitStack() as stack:
         if a.viewer:
             from supermimic_yai.viewer import watch

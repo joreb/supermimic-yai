@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from supermimic_yai.replay import buffer_from, load_episodes, save_episodes
+from supermimic_yai.train import check_heldout
 
 
 def auc(score, y):
@@ -36,6 +37,7 @@ def main():
     ap.add_argument("--products", nargs="*", default=None, help="default: products/product_a + products_train/*")
     ap.add_argument("--arm", default="arms/panda")
     ap.add_argument("--reuse", action="store_true")
+    ap.add_argument("--heldout", nargs="*", default=["products/product_b", "products/product_c"])
     a = ap.parse_args()
     if a.products is None:
         a.products = ["products/product_a", *sorted(map(str, Path("products_train").iterdir()))] if not a.reuse else []
@@ -45,7 +47,9 @@ def main():
     t0 = time.perf_counter()
     if a.reuse:
         eps = load_episodes(out / "episodes.npz")
+        check_heldout(a.products, a.heldout, init_eps=eps)
     else:
+        check_heldout(a.products, a.heldout)
         from supermimic_yai.collect import Collector
         with Collector(cfg, a.arm, a.products, a.bank or out / "bank.npz") as c:
             eps = c.collect(a.episodes, None, rng_seed=0)

@@ -9,9 +9,9 @@ Torch is imported inside run(): spawned collector workers re-import this module 
 --init episodes. Held-out products are only ever evaluated on, never trained on.
 """
 import argparse
-import json
 import signal
 import time
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -22,28 +22,31 @@ from supermimic_yai.collect import Collector
 from supermimic_yai.config import load_config
 from supermimic_yai.curriculum import ResetSampler
 from supermimic_yai.replay import ReplayBuffer, load_episodes
-from supermimic_yai.startbank import load_bank
-from supermimic_yai.task import TOKEN_KINDS
+from supermimic_yai.startbank import load_bank, assembly_name
+from supermimic_yai.task import TOKEN_KINDS  # PLACE/PRESS stay scripted (ruling P1)
 
-TRAINED = ("GRASP", "ALIGN", "INSERT")  # PLACE/PRESS stay scripted (ruling P1)
 ABORT_STREAK = 20  # consecutive out-of-bounds updates of one kind
 
 
 def _names(d):
-    return {Path(d).name, json.loads((Path(d) / "assembly.json").read_text())["name"]}
+    return {Path(d).name, assembly_name(d)}
 
 
-def check_heldout(products, heldout, bank):
+def check_heldout(products, heldout, bank=None, init_eps=()):
     held = set().union(*map(_names, heldout))
     if bad := sorted(held & set().union(*map(_names, products))):
         raise SystemExit(f"refusing to train: held-out product(s) {bad} appear in --products")
-    if bad := sorted({s.product for s in load_bank(bank)} & held):
+    if bank and (bad := sorted({s.product for s in load_bank(bank)} & held)):
         raise SystemExit(f"refusing to train: --bank has start states of held-out product(s) {bad}")
+    if bad := sorted({e["product"] for e in init_eps if "product" in e} & held):
+        raise SystemExit(f"refusing to train: the --init episodes contain held-out product(s) {bad}")
+    if any("product" not in e for e in init_eps):
+        warnings.warn("--init episodes carry no product field (legacy file): cannot verify they exclude held-out products")
 
 
 def _evaluate(it, cfg, a, dirs, w, tw, record):
     from supermimic_yai.evaluate import eval_recipes, eval_tokens, log_video
-    t, arm, learned = cfg["train"], a.arm, TRAINED
+    t, arm, learned = cfg["train"], a.arm, TOKEN_KINDS
     if it % t["eval_every"] == 0:
         for bank in a.eval_banks:
             for (p, k), v in eval_tokens(cfg, arm, dirs, bank, w, t["eval_n"], 0, learned).items():
@@ -76,8 +79,11 @@ def _run(a):
         d = cfg
         for p in path:
             d = d[p]
+        if last not in d:
+            raise SystemExit(f"unknown config key {k}")
         d[last] = yaml.safe_load(v)
-    check_heldout(a.products, a.heldout, a.bank)
+    eps = load_episodes(Path(a.init) / "episodes.npz")
+    check_heldout(a.products, a.heldout, a.bank, eps)
     import torch
     from torch.utils.tensorboard import SummaryWriter
 
@@ -88,7 +94,6 @@ def _run(a):
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     out = Path(a.logdir)
     out.mkdir(parents=True, exist_ok=True)
-    eps = load_episodes(Path(a.init) / "episodes.npz")
     sd, ad, gd, cd = eps[0]["s"].shape[1], eps[0]["a"].shape[1], eps[0]["goal"].shape[0], eps[0]["ctx"].shape[0]
     buf = ReplayBuffer(cfg["replay"]["capacity"], sd, ad, gd, cd)
     for e in eps:
@@ -97,7 +102,7 @@ def _run(a):
     opt_w = torch.optim.Adam(wm.parameters(), w_cfg["lr"])
     L, rng = Learner(cfg, sd, ad, gd, cd, wm, dev), np.random.default_rng(0)
     L.set_norm(buf)
-    kinds = [TOKEN_KINDS.index(k) for k in TRAINED]
+    kinds = list(range(len(TOKEN_KINDS)))
     tw = SummaryWriter(str(out))
     dirs = list(dict.fromkeys([*a.products, *a.heldout]))
     start = 0
@@ -108,7 +113,7 @@ def _run(a):
                     "opt": [o.state_dict() for o in (L.opt_a, L.opt_c, opt_w)], "sched": [s.state_dict() for s in L.sched],
                     "sampler": sampler.state_dict()}, ckpt_path)
 
-    with Collector(cfg, a.arm, a.products, a.bank, kinds=TRAINED) as coll:
+    with Collector(cfg, a.arm, a.products, a.bank, kinds=TOKEN_KINDS) as coll:
         sampler = ResetSampler(coll.bank, p_cfg["gamma"])
         if a.resume:
             ck = torch.load(ckpt_path, map_location=dev, weights_only=False)
@@ -124,7 +129,7 @@ def _run(a):
                 m = L.bc_update(buf, rng, kinds)
                 if i % 100 == 0:
                     tw.add_scalar("policy/bc_loss", m["bc_loss"], i)
-            save_actor_npz(out / "actor_bc.npz", L.actor.export())
+            save_actor_npz(out / "actor_bc.npz", L.actor.export(), TOKEN_KINDS)
         tens = lambda b: {k: torch.as_tensor(v, device=dev, dtype=torch.int64 if k == "kind" else torch.float32)  # noqa: E731
                           for k, v in b.items() if k in ("s", "a", "ctx", "kind", "done")}
         t0, streak, it, aborted = time.perf_counter(), dict.fromkeys(kinds, 0), start, False
@@ -148,7 +153,7 @@ def _run(a):
                     streak[k] = streak[k] + 1 if out_of_bounds(m, p_cfg["horizon"]) else 0
                     if streak[k] >= ABORT_STREAK:  # diverged weights go only to actor_abort.npz; ckpt.pt keeps the last good state
                         aborted = True
-                        save_actor_npz(out / "actor_abort.npz", L.actor.export())
+                        save_actor_npz(out / "actor_abort.npz", L.actor.export(), TOKEN_KINDS)
                         raise SystemExit(f"ABORT it {it}: imagined reward sum or mean V out of bounds for {ABORT_STREAK} updates "
                                          f"(rsum {m['imagined_reward_sum']:.3g}, V {m['v_mean']:.3g} in {m['v_lo']:.3g}..{m['v_hi']:.3g})")
                     n += 1
@@ -157,23 +162,23 @@ def _run(a):
                 for e in new:
                     buf.add(e)
                 sampler.update(new)
-                save_actor_npz(out / "actor.npz", L.actor.export())
+                save_actor_npz(out / "actor.npz", L.actor.export(), TOKEN_KINDS)
                 if it % t["log_every"] == 0:
                     steps = sum(len(e["a"]) for e in new)
-                    for ki, k in zip(kinds, TRAINED):
+                    for ki, k in zip(kinds, TOKEN_KINDS):
                         es = [e for e in new if e["kind"] == ki]
                         if es:
                             tw.add_scalar(f"collect/success/{k}", np.mean([e["terminal_kind"] == "success" for e in es]), it)
                         if ki in last:
                             tw.add_scalar(f"policy/imagined_return/{k}", last[ki]["imagined_return"], it)
                             tw.add_scalar(f"policy/imagined_reward_sum/{k}", last[ki]["imagined_reward_sum"], it)
-                    ms = list(last.values())
                     for tag, key in (("policy/loss", "policy_loss"), ("critic/loss", "critic_loss"), ("policy/grad_norm", "grad_norm"),
-                                     ("policy/held_frac", "held_frac"), ("policy/clamp_frac", "clamp_frac")):
-                        tw.add_scalar(tag, float(np.mean([m[key] for m in ms])), it)
+                                     ("policy/held_frac", "held_frac"), ("policy/clamp_frac", "clamp_frac")) if last else ():
+                        tw.add_scalar(tag, float(np.mean([m[key] for m in last.values()])), it)
                     with torch.no_grad():
                         _, wmm = wm_loss(wm, tens(buf.sample_windows(w_cfg["k"], 2048, rng)), w_cfg["k"], metrics=True)
-                    tw.add_scalar("wm/loss", wl.item(), it)
+                    if n:
+                        tw.add_scalar("wm/loss", wl.item(), it)
                     for key, v in wmm.items():
                         if key.startswith("kstep_err_pt/"):
                             tw.add_scalar(f"wm/{key}", v, it)

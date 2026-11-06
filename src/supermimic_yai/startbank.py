@@ -69,6 +69,10 @@ def load_bank(path):
                 for i, m in enumerate(meta)]
 
 
+def assembly_name(pdir):
+    return json.loads((Path(pdir) / "assembly.json").read_text())["name"]
+
+
 def resolve_recipe(pdir):
     """<dir>/recipe.json if present, else recipes/<dir name>.json beside the products directory."""
     d = Path(pdir)

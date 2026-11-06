@@ -19,8 +19,9 @@ def actor_forward(w, s, goal, kind) -> np.ndarray:
     return a
 
 
-def save_actor_npz(path, w):
-    d = {"s_mu": w["s_mu"], "s_sd": w["s_sd"]}
+def save_actor_npz(path, w, kinds):
+    """kinds: the token kinds this actor was trained for (the default learned kinds when it is evaluated or watched)."""
+    d = {"s_mu": w["s_mu"], "s_sd": w["s_sd"], "kinds": np.array(kinds)}
     for name, layers in (("dec", w["dec"]),) + tuple((f"enc{k}", l) for k, l in enumerate(w["enc"])):
         for i, (W, b) in enumerate(layers):
             d[f"{name}_W{i}"], d[f"{name}_b{i}"] = W, b
@@ -35,4 +36,10 @@ def load_actor_npz(path) -> dict:
         return [(z[f"{name}_W{i}"], z[f"{name}_b{i}"]) for i in range(n)]
 
     n_kinds = sum(k.startswith("enc") and "_W0" in k for k in z.files)
-    return {"s_mu": z["s_mu"], "s_sd": z["s_sd"], "enc": [layers(f"enc{k}") for k in range(n_kinds)], "dec": layers("dec")}
+    return {"s_mu": z["s_mu"], "s_sd": z["s_sd"], "enc": [layers(f"enc{k}") for k in range(n_kinds)], "dec": layers("dec"),
+            "kinds": tuple(map(str, z["kinds"])) if "kinds" in z.files else ("GRASP",)}  # legacy files: the BC actor was GRASP-only
+
+
+def learned_kinds(w, override=None):
+    """Kinds the actor drives: the override, else the ones stored with it; none without an actor."""
+    return tuple(override) if override is not None else tuple(w.get("kinds", ())) if w else ()

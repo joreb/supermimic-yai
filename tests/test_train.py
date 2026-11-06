@@ -108,6 +108,48 @@ def test_rejects_heldout_state_in_bank(setup, tmp_path):
         main(a)
 
 
+def test_rejects_heldout_product_in_init_episodes(setup, tmp_path):
+    import shutil
+
+    from supermimic_yai.replay import load_episodes
+    from supermimic_yai.train import main
+    eps = load_episodes(setup / "init" / "episodes.npz")
+    for e in eps:
+        e["product"] = "product_b"
+    init = tmp_path / "init"
+    init.mkdir()
+    save_episodes(init / "episodes.npz", eps)
+    shutil.copy(setup / "init" / "model.pt", init / "model.pt")
+    a = args(setup, tmp_path / "log", 1)
+    a[a.index("--init") + 1] = str(init)
+    with pytest.raises(SystemExit, match="--init"):
+        main(a)
+
+
+def test_legacy_init_episodes_warn():
+    from supermimic_yai.train import check_heldout
+    with pytest.warns(UserWarning, match="no product field"):
+        check_heldout([A], [B], init_eps=[{"s": 0}])
+
+
+def test_set_rejects_unknown_key(setup, tmp_path):
+    from supermimic_yai.train import main
+    with pytest.raises(SystemExit, match="policy.bacth"):
+        main(args(setup, tmp_path, 1, "--set", "policy.bacth=1"))
+
+
+def test_zero_update_iteration(setup, tmp_path):
+    from supermimic_yai.train import main
+    assert main(args(setup, tmp_path, 1, "--set", "train.min_updates=0", "--set", "train.max_updates=0", "--set", "train.eval_every=1000")) == 1
+
+
+def test_trained_actor_stores_kinds(setup, tmp_path):
+    from supermimic_yai.npmlp import load_actor_npz
+    from supermimic_yai.train import main
+    assert main(args(setup, tmp_path, 1, "--set", "train.eval_every=1000")) == 1
+    assert load_actor_npz(tmp_path / "actor.npz")["kinds"] == TOKEN_KINDS
+
+
 def test_abort_keeps_last_good_ckpt(setup, tmp_path, monkeypatch):
     import torch
     from supermimic_yai import improve, train
