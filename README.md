@@ -74,3 +74,34 @@ docker run --rm --gpus all -e DISPLAY -e WAYLAND_DISPLAY -e XDG_RUNTIME_DIR \
 ```
 
 Add `--controller learned --actor runs/train/actor.npz` to watch the trained policy. Rebuild the image once (`docker build -t supermimic-yai .`) to pick up `libglfw3`.
+
+## Results
+
+Laptop run (GTX 1050, 4 GB): `train` command above with `--iters 1000 --set train.episodes_per_iter=8`, logdir `runs/train9`, stopped at the 12 h wall-time cap (about 12.1 h, about 12 GPU-hours, 1.3 GB GPU memory) after about 450 iterations (last logged eval at 450). Evaluation: `tools/eval.py --seeds 50` on EVAL seeds, learned kinds GRASP/ALIGN/INSERT; PLACE and PRESS are scripted in every column. "BC" is the behaviour-cloning warm start (`actor_bc.npz`), "trained" is the final Dyna-trained actor.
+
+| product | token | scripted | BC | trained |
+|---|---|---|---|---|
+| A | GRASP | 1.00 | 0.64 | 0.00 |
+| A | ALIGN | 1.00 | 0.64 | 0.00 |
+| A | INSERT | 0.98 | 0.62 | 0.00 |
+| A | PLACE, PRESS | scripted | scripted | scripted |
+| A | **full recipe** | 0.98 | 0.00 | 0.00 |
+| B | GRASP | 1.00 | 0.40 | 0.00 |
+| B | ALIGN | 1.00 | 0.28 | 0.00 |
+| B | INSERT | 1.00 | 0.26 | 0.00 |
+| B | PLACE, PRESS | scripted | scripted | scripted |
+| B | **full recipe** | 0.90 | 0.00 | 0.00 |
+| C | GRASP | 0.98 | 0.22 | 0.00 |
+| C | ALIGN | 1.00 | 0.08 | 0.00 |
+| C | INSERT | 0.76 | 0.14 | 0.00 |
+| C | PLACE, PRESS | scripted | scripted | scripted |
+| C | **full recipe** | 0.46 | 0.00 | 0.00 |
+
+**Outcome against targets: missed.** Product A full-recipe success is 0 % for the learned controllers (target 80 %); held-out B and C are 0 % (target 50 %). `eval/recipe_success` for A stayed at 0 throughout training, so the plateau rule never fired. The BC warm start is the best learned actor (A tokens 62-64 %, B 26-40 %, C 8-22 %) and Dyna updates made it worse: trained-actor token success is 0 % everywhere (A GRASP peaked at 13 % at iteration 300, then fell). This is the failure predicted in issue #6: the imagination horizon H=32 at 50 Hz is shorter than a grasp, so imagined returns cannot credit a completed grasp and policy updates degrade the learned behaviour. Nothing in `src/` was retuned. The scripted baseline stays the only controller that finishes recipes (A 98 %, B 90 %, C 46 %; C INSERT is the weak token).
+
+World model at the end (iteration 450): `wm/kstep_err_pt` (held-out k-step part-position error, metres) GRASP 0.0096, ALIGN 0.029, INSERT 0.024; `wm/loss` is 1.4e4 and rose during training (cause not investigated). No existing tool re-evaluates the model without src changes, so these are the training-time logged values.
+
+GIFs show the BC actor (the better learned actor) on seed 0: `media/learned_a.gif` (A), `media/learned_b.gif` (B). Neither completes the recipe.
+
+![BC actor, product A](media/learned_a.gif)
+![BC actor, product B](media/learned_b.gif)
