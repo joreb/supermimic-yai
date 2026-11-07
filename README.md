@@ -3,13 +3,28 @@
 Yet Another Implementation of [SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable World Model](https://arxiv.org/abs/2610.28480) (Liao et al., CoRL 2026).
 
 - `wiki/` — paper notes, a git submodule pointing at a private repo (`joreb/supermimic-wiki`). Collaborators with access: `git submodule update --init`.
-- `src/supermimic_yai/` — implementation (work in progress).
+- `src/supermimic_yai/` — implementation.
+
+Goal: robot arms learn to assemble devices from the CAD files of their parts. An agent proposes a recipe of action tokens, the user approves it, and skills learned on one product transfer to new ones without retraining.
+
+## Status
+
+| Plan | What | State |
+|---|---|---|
+| 1 | MuJoCo sim, products A/B/C, scripted action tokens, recipe runner | done |
+| 2a | Differentiable world model fitted on scripted episodes | done |
+| 2b | Learned controller (BC warm start + Dyna training in imagination), eval, curriculum, live viewer | done, target missed (see [Results](#results)) |
+| 2b follow-up | 10 Hz control so a grasp fits the imagination horizon; refit world-model normalisation; per-kind BC | next |
+| 3 | Agent that writes recipes, switchable `--agent claude-code\|ollama`, user approval gate | planned |
+| 4 | Voice input | planned |
+
+Open issues behind the 2b result: [#6](https://github.com/joreb/supermimic-yai/issues/6) imagination horizon (H=32 at 50 Hz) shorter than a grasp, [#7](https://github.com/joreb/supermimic-yai/issues/7) world-model normalisation never refit during training, [#8](https://github.com/joreb/supermimic-yai/issues/8) shared BC warm start across kinds.
 
 ## Demo: Product A assembled by scripted action tokens
 
 ![Franka Panda assembling Product A in MuJoCo (2x speed)](media/product_a.gif)
 
-Scripted baseline (Plan 1), seed 0, played at 2x. Full-length video: [media/product_a.mp4](media/product_a.mp4). The learned SuperMimic-style controller replaces the contact tokens in Plan 2.
+Scripted baseline (Plan 1), seed 0, played at 2x. Full-length video: [media/product_a.mp4](media/product_a.mp4). The learned controller (Plan 2b) drives the contact tokens GRASP, ALIGN and INSERT; see [Results](#results).
 
 ## Docker
 
@@ -17,7 +32,8 @@ All tests run in the image (CPU, MuJoCo with OSMesa rendering):
 
 ```
 docker build -t supermimic-yai .
-docker run --rm -v "$PWD":/work -w /work supermimic-yai pytest -q
+docker run --rm -v "$PWD":/work -w /work supermimic-yai pytest -q -m "not slow"   # fast suite, ~25 min
+docker run --rm -v "$PWD":/work -w /work supermimic-yai pytest -q -m slow         # recipe and runner checks, ~1 h
 ```
 
 ## Run a recipe
