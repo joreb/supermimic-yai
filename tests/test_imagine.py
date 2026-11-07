@@ -127,10 +127,10 @@ def test_gae_targets_detached_and_match_reference():
 def test_grip_box_recall_and_regression(collector):  # noqa: F811
     from supermimic_yai.replay import buffer_from
     c, _, _ = collector
-    eps = c.collect(40, None, rng_seed=1)
-    grip = fit_grip_box(buffer_from(eps[:20]))  # fit on one half, test on the other
+    eps = c.collect(120, None, rng_seed=1)  # 10 Hz episodes are 5x shorter than the 50 Hz ones this was sized for
+    grip = fit_grip_box(buffer_from(eps[:60]))  # fit on one half, test on the other
     n = (SD - task._EXTRA) // 2
-    S = np.concatenate([np.concatenate([e["s"][:-1], e["s"][1:]]) for e in eps[20:]])
+    S = np.concatenate([np.concatenate([e["s"][:-1], e["s"][1:]]) for e in eps[60:]])
     held = S[S[:, 2 * n + 8] > 0.5]
     assert len(held) > 100
     rec = (grip_box_t(torch.as_tensor(held), grip) >= 0.5).double().mean().item()
