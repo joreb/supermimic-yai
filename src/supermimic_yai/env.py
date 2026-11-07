@@ -15,8 +15,12 @@ _WARNS = (mujoco.mjtWarning.mjWARN_BADQACC, mujoco.mjtWarning.mjWARN_BADQVEL,
           mujoco.mjtWarning.mjWARN_BADQPOS)
 
 
+CONTROL_HZ = 10
+
+
 class AssemblyEnv(gym.Env):
-    def __init__(self, arm: ArmSpec, product: Product, control_hz: int = 50):
+    def __init__(self, arm: ArmSpec, product: Product, control_hz: int = CONTROL_HZ):
+        self.control_hz = control_hz
         self.arm, self.product = arm, product
         self.n_arm = len(arm.arm_joints)
         self.part_order = list(product.parts)
@@ -84,6 +88,7 @@ class AssemblyEnv(gym.Env):
             self.ctx = start.context
         self._down_quat = self._rec = None  # executor stash from an earlier run must not leak in
         mujoco.mj_setState(self.model, self.data, start.state, START_SPEC)
+        self.data.ctrl[self.index.arm_ctrl_idx] = self.data.qpos[self.index.arm_qpos_adr]  # state omits ctrl: the ramp starts from hold
         mujoco.mj_forward(self.model, self.data)
         self._ready = True
         return self.obs()
@@ -94,10 +99,14 @@ class AssemblyEnv(gym.Env):
         a = np.asarray(action, dtype=np.float64)
         if a.shape != (self.n_arm + 1,):
             raise ValueError(f"action shape {a.shape}, expected {(self.n_arm + 1,)}")
+        old = self.data.ctrl[self.index.arm_ctrl_idx].copy()
         self._set_ctrl(a[:self.n_arm], float(np.clip(a[self.n_arm], 0.0, 1.0)))
+        new = self.data.ctrl[self.index.arm_ctrl_idx].copy()
         for w in _WARNS:  # restore() leaves old counts in place; count only this step's warnings
             self.data.warning[w].number = 0
-        mujoco.mj_step(self.model, self.data, self.substeps)
+        for k in range(1, self.substeps + 1):  # ramp the targets so a slow control tick is not a step input
+            self.data.ctrl[self.index.arm_ctrl_idx] = old + (new - old) * (k / self.substeps)
+            mujoco.mj_step(self.model, self.data)
         d = self.data
         unstable = (any(d.warning[w].number > 0 for w in _WARNS)
                     or not (np.isfinite(d.qacc).all() and np.isfinite(d.qvel).all() and np.isfinite(d.qpos).all()))

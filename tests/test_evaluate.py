@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from supermimic_yai.env import CONTROL_HZ
 from supermimic_yai import seeds
 from supermimic_yai.evaluate import eval_recipes, log_video, results_markdown
 
@@ -58,5 +59,5 @@ def test_eval_bank_from_eval_seeds(tmp_path):
     product = load_product(Path(A))
     env = AssemblyEnv(load_arm(ROOT / "arms" / "panda"), product)
     want = [sample_context(np.random.default_rng(s), product, env.n_arm) for s in seeds.EVAL[:2]]
-    got = load_bank(tmp_path / "b")
+    got = load_bank(tmp_path / "b", CONTROL_HZ)
     assert got and all(s.context in want for s in got) and {want.index(s.context) for s in got} == {0, 1}

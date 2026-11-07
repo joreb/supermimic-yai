@@ -141,6 +141,7 @@ def test_align_needs_held_flag(a):
 
 def test_dropped_debounced(a, monkeypatch):
     env, ep, tok, hold = _at(a, "ALIGN")
+    ep.drop_steps = 5  # debounce window as at 50 Hz
     seq = iter([False, True, False, False, False, False, False])  # flicker, then 5 consecutive
     monkeypatch.setattr(task, "fingers_hold", lambda e, p: next(seq))
     kinds = []
@@ -200,3 +201,9 @@ def test_reward_sanity(a):
     far = near.copy()
     far[2 * n + 1:2 * n + 3] += 0.01
     assert reward("ALIGN", s, near, g) > reward("ALIGN", s, far, g)
+
+
+def test_drop_window_is_time_based():
+    product, _ = _load("product_a")
+    assert task.drop_steps(AssemblyEnv(ARM, product, control_hz=10)) == 1
+    assert task.drop_steps(AssemblyEnv(ARM, product, control_hz=50)) == 5

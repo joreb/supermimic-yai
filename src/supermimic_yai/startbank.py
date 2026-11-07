@@ -8,7 +8,8 @@ import mujoco
 import numpy as np
 
 from supermimic_yai.context import SimContext
-from supermimic_yai.env import START_SPEC, AssemblyEnv
+from supermimic_yai.env import CONTROL_HZ, START_SPEC, AssemblyEnv
+from supermimic_yai.replay import check_rate
 from supermimic_yai.scripted import execute
 
 
@@ -52,19 +53,20 @@ def _npz(path):
     return path if path.suffix == ".npz" else path.with_name(path.name + ".npz")
 
 
-def save_bank(path, states):
+def save_bank(path, states, control_hz):
     path = _npz(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(path, **{f"s{i}": s.state for i, s in enumerate(states)})
+    np.savez(path, control_hz=np.array(control_hz), **{f"s{i}": s.state for i, s in enumerate(states)})
     meta = [{"product": s.product, "step": s.step, "token": s.token, "held": s.held, "context": _ctx_json(s.context)}
             for s in states]
     path.with_suffix(".json").write_text(json.dumps(meta))
 
 
-def load_bank(path):
+def load_bank(path, control_hz):
     path = _npz(path)
     meta = json.loads(path.with_suffix(".json").read_text())
     with np.load(path) as z:
+        check_rate(z["control_hz"] if "control_hz" in z.files else None, control_hz, "bank")
         return [StartState(m["product"], m["step"], m["token"], m["held"], _ctx_from(m["context"]), z[f"s{i}"])
                 for i, m in enumerate(meta)]
 
@@ -99,7 +101,7 @@ def main(argv=None):
         recipe = load_recipe(resolve_recipe(d), product, arm)
         states += collect_start_states(arm, product, recipe, getattr(seedmod, a.seed_range.upper())[:a.seeds])
         print(f"{product.name}: {len(states)} states so far", flush=True)
-    save_bank(a.out, states)
+    save_bank(a.out, states, CONTROL_HZ)
 
 
 if __name__ == "__main__":

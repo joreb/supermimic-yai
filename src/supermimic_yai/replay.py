@@ -7,6 +7,13 @@ transition may be the window's last, but a window never runs past an episode end
 import numpy as np
 
 
+def check_rate(saved_hz, env_hz, what):
+    """Refuse data recorded at another control rate; no field = legacy = 50 Hz."""
+    saved = 50 if saved_hz is None else int(saved_hz)
+    if saved != env_hz:
+        raise ValueError(f"{what} recorded at {saved} Hz, env runs at {env_hz} Hz")
+
+
 class ReplayBuffer:
     def __init__(self, capacity, s_dim, a_dim, g_dim, c_dim):
         z = lambda *sh, dt=np.float64: np.zeros((capacity, *sh), dt)  # noqa: E731
@@ -53,8 +60,9 @@ class ReplayBuffer:
                 "goal": self.goal[i], "ctx": self.ctx[i], "kind": self.kind[i]}
 
 
-def save_episodes(path, eps):
+def save_episodes(path, eps, control_hz):
     d = {k: np.concatenate([e[k] for e in eps]) for k in ("s", "a", "r", "done", "unstable")}
+    d["control_hz"] = np.array(control_hz)
     d["len"] = np.array([len(e["a"]) for e in eps])
     for k in ("goal", "ctx"):
         d[k] = np.stack([e[k] for e in eps])
@@ -64,8 +72,9 @@ def save_episodes(path, eps):
     np.savez_compressed(path, **d)
 
 
-def load_episodes(path):
+def load_episodes(path, control_hz):
     d, eps, i = dict(np.load(path)), [], 0  # dict: an NpzFile re-decompresses on every access
+    check_rate(d.get("control_hz"), control_hz, "episodes")
     for j, T in enumerate(d["len"]):
         sl, s0 = slice(i, i + T), i + j
         eps.append({"s": d["s"][s0:s0 + T + 1], **{k: d[k][sl] for k in ("a", "r", "done", "unstable")},

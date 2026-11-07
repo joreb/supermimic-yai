@@ -64,7 +64,7 @@ def main(argv=None) -> int:
         if bad := set(a.learned_kinds or ()) - set(TOKEN_KINDS):
             print(f"error: --learned-kinds {sorted(bad)} not in {TOKEN_KINDS}", file=sys.stderr)
             return 2
-        ctrl = LearnedController(load_actor_npz(a.actor), load_config("laptop")["action_scale"], a.learned_kinds)
+        ctrl = LearnedController(load_actor_npz(a.actor, env.control_hz), load_config("laptop")["action_scale"], a.learned_kinds)
     with contextlib.ExitStack() as stack:
         if a.viewer:
             from supermimic_yai.viewer import watch

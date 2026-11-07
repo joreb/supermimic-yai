@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from supermimic_yai.config import load_config
 from supermimic_yai.replay import ReplayBuffer
@@ -65,8 +66,46 @@ def test_product_roundtrips_and_legacy_loads(tmp_path):
     from supermimic_yai.replay import load_episodes, save_episodes
     e = {"s": np.zeros((3, 2)), "a": np.zeros((2, 1)), "r": np.zeros(2), "done": np.zeros(2, bool), "unstable": np.zeros(2, bool),
          "goal": np.zeros(3), "ctx": np.zeros(4), "kind": 0, "terminal_kind": "timeout", "product": "p"}
-    save_episodes(tmp_path / "e.npz", [e, e])
-    assert [x["product"] for x in load_episodes(tmp_path / "e.npz")] == ["p", "p"]
+    save_episodes(tmp_path / "e.npz", [e, e], 10)
+    assert [x["product"] for x in load_episodes(tmp_path / "e.npz", 10)] == ["p", "p"]
     z = {k: v for k, v in np.load(tmp_path / "e.npz").items() if k != "product"}
     np.savez(tmp_path / "old.npz", **z)
-    assert "product" not in load_episodes(tmp_path / "old.npz")[0]
+    assert "product" not in load_episodes(tmp_path / "old.npz", 10)[0]
+
+
+def test_rate_mismatch_refused(tmp_path):
+    import shutil
+
+    import torch
+    from supermimic_yai.context import SimContext
+    from supermimic_yai.npmlp import load_actor_npz, save_actor_npz
+    from supermimic_yai.policy import Actor
+    from supermimic_yai.replay import load_episodes, save_episodes
+    from supermimic_yai.startbank import StartState, load_bank, save_bank
+    from supermimic_yai.wm import WorldModel, load_wm, save_wm
+    e = {"s": np.zeros((3, 2)), "a": np.zeros((2, 1)), "r": np.zeros(2), "done": np.zeros(2, bool), "unstable": np.zeros(2, bool),
+         "goal": np.zeros(3), "ctx": np.zeros(4), "kind": 0, "terminal_kind": "timeout", "product": "p"}
+    st = StartState("p", 0, "GRASP", None, SimContext(1.0, 1.0, {}, (0.0,)), np.zeros(3))
+    for name, save, load in [
+        ("episodes.npz", lambda p, hz: save_episodes(p, [e], hz), lambda p, hz: load_episodes(p, control_hz=hz)),
+        ("bank.npz", lambda p, hz: save_bank(p, [st], hz), lambda p, hz: load_bank(p, control_hz=hz)),
+        ("actor.npz", lambda p, hz: save_actor_npz(p, Actor(2, 3, 1, 3, 4, 8, 1).export(), ("GRASP",), hz),
+         lambda p, hz: load_actor_npz(p, control_hz=hz)),
+        ("wm.pt", lambda p, hz: save_wm(p, WorldModel(2, 1, 4, 3, 8, 1), hz), lambda p, hz: load_wm(p, 2, 1, 4, control_hz=hz)),
+    ]:
+        new, old = tmp_path / name, tmp_path / ("old_" + name)
+        save(new, 50)
+        load(new, 50)
+        # legacy file: same content without the field
+        if name.endswith(".pt"):
+            sd = torch.load(new)
+            del sd["control_hz"]
+            torch.save(sd, old)
+        else:
+            np.savez(old, **{k: v for k, v in np.load(new).items() if k != "control_hz"})
+            if name == "bank.npz":
+                shutil.copy(new.with_suffix(".json"), old.with_suffix(".json"))
+        for f in (new, old):
+            with pytest.raises(ValueError, match="50 Hz"):
+                load(f, 10)
+            load(f, 50)

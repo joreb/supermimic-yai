@@ -6,6 +6,7 @@ import argparse
 import tempfile
 from pathlib import Path
 
+from supermimic_yai.env import CONTROL_HZ
 from supermimic_yai import seeds as seedmod
 from supermimic_yai.config import load_config
 from supermimic_yai.evaluate import eval_recipes, eval_tokens, log_video, results_markdown
@@ -28,11 +29,11 @@ def main():
     ap.add_argument("--video-dir")
     a = ap.parse_args()
     cfg = load_config(a.config)
-    w = load_actor_npz(a.actor) if a.controller == "learned" else None
+    w = load_actor_npz(a.actor, CONTROL_HZ) if a.controller == "learned" else None
     kinds = learned_kinds(w, a.learned_kinds)
-    states = [s for d in a.products for s in load_bank(Path(a.bank_dir) / f"bank_{Path(d).name.split('_')[-1]}.npz")]
+    states = [s for d in a.products for s in load_bank(Path(a.bank_dir) / f"bank_{Path(d).name.split('_')[-1]}.npz", CONTROL_HZ)]
     with tempfile.TemporaryDirectory() as t:
-        save_bank(Path(t) / "b.npz", states)
+        save_bank(Path(t) / "b.npz", states, CONTROL_HZ)
         tokens = eval_tokens(cfg, a.arm, a.products, Path(t) / "b.npz", w, a.seeds, learned_kinds=kinds)
     recipes = eval_recipes(a.arm, a.products, w, seedmod.EVAL[:a.seeds], record_first=a.video_dir is not None,
                            action_scale=cfg["action_scale"], learned_kinds=kinds)

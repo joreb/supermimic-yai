@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from supermimic_yai.env import CONTROL_HZ
 from supermimic_yai.collect import Collector
 from supermimic_yai.replay import buffer_from, load_episodes
 from supermimic_yai.train import check_heldout
@@ -53,11 +54,11 @@ def main():
     from supermimic_yai.task import TOKEN_KINDS
     from supermimic_yai.wm import load_wm
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    eps = load_episodes(Path(a.wm) / "episodes.npz")
+    eps = load_episodes(Path(a.wm) / "episodes.npz", CONTROL_HZ)
     check_heldout(a.products, a.heldout, init_eps=eps)
     buf = buffer_from(eps)
     sd, ad, gd, cd = buf.s.shape[1], buf.a.shape[1], buf.goal.shape[1], buf.ctx.shape[1]
-    wm = load_wm(Path(a.wm) / "model.pt", sd, ad, cd, dev)
+    wm = load_wm(Path(a.wm) / "model.pt", sd, ad, cd, dev, control_hz=CONTROL_HZ)
     wm.requires_grad_(False)
     L, rng = Learner(cfg, sd, ad, gd, cd, wm, dev), np.random.default_rng(0)
     L.set_norm(buf)
@@ -76,7 +77,7 @@ def main():
         if over >= 20:
             print(f"ABORT it {it}: reward sum {m['imagined_reward_sum']:.3g} (max {bound * R_MAX}) or mean V {m['v_mean']:.3g} "
                   f"(range {m['v_lo']:.3g}..{m['v_hi']:.3g}) out of bounds for 20 iterations", flush=True)
-            save_actor_npz(out / "actor_abort.npz", L.actor.export(), a.kinds)
+            save_actor_npz(out / "actor_abort.npz", L.actor.export(), a.kinds, CONTROL_HZ)
             torch.save(L.actor.state_dict(), out / "actor_abort.pt")
             raise SystemExit(1)
         if it % 50 == 0:
@@ -89,13 +90,13 @@ def main():
             tw.add_scalar("sys/it_per_s", it / (time.perf_counter() - t0), it)
             tw.add_scalar("sys/gpu_mem_mb", torch.cuda.max_memory_allocated() / 2**20 if dev == "cuda" else 0, it)
         if it % 500 == 0:
-            save_actor_npz(out / f"actor_{it}.npz", L.actor.export(), a.kinds)
+            save_actor_npz(out / f"actor_{it}.npz", L.actor.export(), a.kinds, CONTROL_HZ)
             print(f"it {it} return {np.mean(curve[-50:]):.3f} rsum {m['imagined_reward_sum']:.2f} held>.5 {m['held_frac']:.2f} clamp {m['clamp_frac']:.3f} critic {m['critic_loss']:.4f} gn {m['grad_norm']:.2f}", flush=True)
     tw.close()
     train_wall = time.perf_counter() - t0
     torch.save(L.actor.state_dict(), out / "actor.pt")
     w = L.actor.export()
-    save_actor_npz(out / "actor.npz", w, a.kinds)
+    save_actor_npz(out / "actor.npz", w, a.kinds, CONTROL_HZ)
     if curve:
         print(f"imagined return start {np.mean(curve[:50]):.3f} end {np.mean(curve[-50:]):.3f}; train wall {train_wall:.0f} s")
     for k in a.kinds:

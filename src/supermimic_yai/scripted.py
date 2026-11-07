@@ -16,7 +16,7 @@ APPROACH_SPEED = 0.05   # m/s, grasp descent / lift
 INSERT_SPEED = 0.01     # m/s
 PRESS_SPEED = 0.005     # m/s
 DAMP = 1e-3
-LEAD = 0.003            # max distance the commanded point may lead the measured one (bounds contact force)
+LEAD_SPEED = 0.15       # m/s, max speed the commanded point may lead the measured one (bounds contact force)
 IK = {"damping": DAMP}
 PLATEAU = (0.5, 5e-4)   # window [s], minimum improvement [m]
 
@@ -150,8 +150,9 @@ class _Run:
         if lead:
             gap = tgt[:3] - ee_point(env)
             n = np.linalg.norm(gap)
-            if n > LEAD:
-                tgt[:3] = ee_point(env) + gap * LEAD / n
+            lead = LEAD_SPEED * self.dt
+            if n > lead:
+                tgt[:3] = ee_point(env) + gap * lead / n
         _, _, term, _, _ = env.step(np.append(ik_step(env, tgt, **IK), grip))
         self.n += 1
         capture_frame(env)

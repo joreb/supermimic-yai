@@ -6,6 +6,7 @@ import shutil
 import numpy as np
 import pytest
 
+from supermimic_yai.env import CONTROL_HZ
 from supermimic_yai import seeds
 from supermimic_yai.arm import load_arm
 from supermimic_yai import collect as C
@@ -36,7 +37,7 @@ def a_bank(tmp_path_factory):
     product, recipe, _ = _bank(A)
     bank = collect_start_states(ARM, product, recipe, seeds.TRAIN[:1])
     path = tmp_path_factory.mktemp("bank") / "bank.npz"
-    save_bank(path, bank)
+    save_bank(path, bank, CONTROL_HZ)
     return product, recipe, bank, path
 
 
@@ -124,10 +125,11 @@ def test_policy_gripper_range_and_noiseless(a_bank):
 
 def test_timeout_is_truncation(a_bank, monkeypatch):
     env, tok, st = _tok(a_bank, "ALIGN")
-    monkeypatch.setattr(C, "budget_steps", lambda env, tok: 3)
-    for weights in (_zero_actor(env, 0.0), None):  # policy loop and scripted recorder both stop on terminal_kind
+    monkeypatch.setattr(C, "budget_steps", lambda env, tok: 1)
+    monkeypatch.setattr("supermimic_yai.task.success", lambda *a: False)  # at 10 Hz the scripted ALIGN succeeds within one tick
+    for weights in (_zero_actor(env, -5.0), None):  # policy loop (closed gripper: a 10 Hz step drops a half-open one) and scripted recorder both stop on terminal_kind
         e = C.run_episode(env, tok, st, 0.05, 0.0, np.random.default_rng(0), weights)
-        assert e["terminal_kind"] == "timeout" and len(e["a"]) == 3 and not e["done"].any()
+        assert e["terminal_kind"] == "timeout" and len(e["a"]) == 1 and not e["done"].any()
 
 
 def test_policy_episode_fields(collector):
@@ -159,7 +161,7 @@ def test_env_lru_cap(a_bank, tmp_path):
     r["product"] = "copy_b"
     (tmp_path / "recipes" / "copy_b.json").write_text(json.dumps(r))
     p2, r2, _ = _bank(d)
-    save_bank(tmp_path / "bank.npz", bank + collect_start_states(ARM, p2, r2, seeds.TRAIN[:1], kinds=("ALIGN",)))
+    save_bank(tmp_path / "bank.npz", bank + collect_start_states(ARM, p2, r2, seeds.TRAIN[:1], kinds=("ALIGN",)), CONTROL_HZ)
     cfg = load_config("laptop")
     cfg["collect"].update(workers=2, envs_per_worker=1)
     with Collector(cfg, ARM_DIR, [A, d], tmp_path / "bank.npz") as c:

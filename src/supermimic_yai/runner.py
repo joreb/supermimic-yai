@@ -4,13 +4,13 @@ import numpy as np
 from supermimic_yai.collect import _Recorder, _Stop
 from supermimic_yai.npmlp import actor_forward, learned_kinds as _kinds
 from supermimic_yai.scripted import TokenResult, capture_frame, run_token
-from supermimic_yai.task import DROP_STEPS, TOKEN_KINDS, TokenEpisode, budget_steps
+from supermimic_yai.task import TOKEN_KINDS, drop_steps, TokenEpisode, budget_steps
 
 
 def run_contact_token(env, tok, held, weights, action_scale):
     """-> (TokenResult, held). weights=None runs the scripted token through the same step path at zero noise."""
     # the scripted token judges its own grip; the analytic drop terminal is for learning
-    ep = TokenEpisode.live(env, tok, held, budget_steps(env, tok), action_scale, np.inf if weights is None else DROP_STEPS)
+    ep = TokenEpisode.live(env, tok, held, budget_steps(env, tok), action_scale, np.inf if weights is None else drop_steps(env))
     ep.reset()
     why, res = [None], None
     if weights is None:

@@ -6,6 +6,7 @@ s layout (task.py): [qpos n, qvel n, gripper, held pose 7, held flag, target pos
 import torch
 from torch import nn
 
+from supermimic_yai.replay import check_rate
 from supermimic_yai.task import TOKEN_KINDS
 
 _EXTRA = 17
@@ -85,9 +86,15 @@ def wm_loss(model, batch, k, metrics=False):
     return loss, out
 
 
-def load_wm(path, s_dim, a_dim, c_dim, device="cpu"):
+def save_wm(path, model, control_hz):
+    torch.save({**model.state_dict(), "control_hz": torch.tensor(control_hz)}, path)
+
+
+def load_wm(path, s_dim, a_dim, c_dim, device="cpu", *, control_hz):
     """Width/depth are read off the state dict. -> eval-mode WorldModel on device."""
     st = torch.load(path, map_location="cpu")
+    hz = st.pop("control_hz", None)
+    check_rate(None if hz is None else hz.item(), control_hz, "world model")
     lin = [k for k in st if k.startswith("net.") and k.endswith("weight")]
     model = WorldModel(s_dim, a_dim, c_dim, len(TOKEN_KINDS), st[lin[0]].shape[0], len(lin) - 1)
     model.load_state_dict(st)

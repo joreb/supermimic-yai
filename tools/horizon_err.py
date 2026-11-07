@@ -9,6 +9,7 @@ import numpy as np
 import torch
 from fit_wm import split
 
+from supermimic_yai.env import CONTROL_HZ
 from supermimic_yai.replay import buffer_from, load_episodes
 from supermimic_yai.task import _EXTRA, TOKEN_KINDS
 from supermimic_yai.wm import gate_errors, load_wm, rollout
@@ -20,11 +21,11 @@ def main():
     ap.add_argument("--episodes", default="runs/wm/episodes.npz")
     ap.add_argument("--H", type=int, nargs="+", default=[8, 16, 32])
     a = ap.parse_args()
-    eps = load_episodes(a.episodes)
+    eps = load_episodes(a.episodes, CONTROL_HZ)
     val, _ = split(eps, np.random.default_rng(0))
     sd, ad, cd = val[0]["s"].shape[1], val[0]["a"].shape[1], val[0]["ctx"].shape[0]
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    model = load_wm(a.model, sd, ad, cd, dev)
+    model = load_wm(a.model, sd, ad, cd, dev, control_hz=CONTROL_HZ)
     n = (sd - _EXTRA) // 2
     print(f"held-out episodes {len(val)}; errors in mm, pt = part-to-target, held = held part rel EE")
     print("H    windows  " + "  ".join(f"{k}:pt/held" for k in TOKEN_KINDS))

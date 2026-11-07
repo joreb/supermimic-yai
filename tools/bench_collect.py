@@ -4,6 +4,7 @@ import collections
 import time
 from pathlib import Path
 
+from supermimic_yai.env import CONTROL_HZ
 from supermimic_yai import seeds
 from supermimic_yai.arm import load_arm
 from supermimic_yai.collect import Collector
@@ -25,7 +26,7 @@ def main():
     product = load_product(prod)
     bank = collect_start_states(arm, product, load_recipe(resolve_recipe(prod), product, arm), seeds.TRAIN[:a.seeds])
     print(f"bank {len(bank)} states", flush=True)
-    save_bank("out/bench_bank.npz", bank)
+    save_bank("out/bench_bank.npz", bank, CONTROL_HZ)
     with Collector(load_config(a.config), a.arm, [prod], "out/bench_bank.npz") as c:
         t0 = time.perf_counter()
         eps = c.collect(a.episodes, None, rng_seed=0)

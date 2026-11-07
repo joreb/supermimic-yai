@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from supermimic_yai.env import CONTROL_HZ
 from supermimic_yai.arm import load_arm
 from supermimic_yai.env import AssemblyEnv
 from supermimic_yai.product import load_product
@@ -57,8 +58,8 @@ def test_restore_mismatch_raises(a):
 
 def test_save_load_roundtrip(a, tmp_path):
     _, _, bank = a
-    save_bank(tmp_path / "bank", bank)
-    back = load_bank(tmp_path / "bank")
+    save_bank(tmp_path / "bank", bank, CONTROL_HZ)
+    back = load_bank(tmp_path / "bank", CONTROL_HZ)
     assert len(back) == len(bank)
     for x, y in zip(bank, back):
         assert (x.product, x.step, x.token, x.held, x.context) == (y.product, y.step, y.token, y.held, y.context)
@@ -67,11 +68,11 @@ def test_save_load_roundtrip(a, tmp_path):
 
 def test_dotted_bank_path(a, tmp_path):
     for name in ("x.v1.npz", "y.v1"):  # save and load must agree on one pair of files
-        save_bank(tmp_path / name, a[2])
-        assert len(load_bank(tmp_path / name)) == len(a[2])
+        save_bank(tmp_path / name, a[2], CONTROL_HZ)
+        assert len(load_bank(tmp_path / name, CONTROL_HZ)) == len(a[2])
     assert (tmp_path / "x.v1.json").exists()
-    save_bank(tmp_path / "y.v2", a[2][:1])  # a different dotted name must not overwrite y.v1
-    assert len(load_bank(tmp_path / "y.v1")) == len(a[2])
+    save_bank(tmp_path / "y.v2", a[2][:1], CONTROL_HZ)  # a different dotted name must not overwrite y.v1
+    assert len(load_bank(tmp_path / "y.v1", CONTROL_HZ)) == len(a[2])
 
 
 def test_seed_range_eval(tmp_path):
@@ -82,4 +83,4 @@ def test_seed_range_eval(tmp_path):
           "--arm", str(ROOT / "arms" / "panda"), "--out", str(tmp_path / "b.npz")])
     product = load_product(ROOT / "products" / "product_a")
     ctx = sample_context(np.random.default_rng(seeds.EVAL[0]), product, AssemblyEnv(ARM, product).n_arm)
-    assert load_bank(tmp_path / "b")[0].context == ctx
+    assert load_bank(tmp_path / "b", CONTROL_HZ)[0].context == ctx

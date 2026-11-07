@@ -1,6 +1,8 @@
 """Numpy-only actor forward + npz io (workers never import torch). Layers = [(W, b), ...], W shaped (in, out)."""
 import numpy as np
 
+from supermimic_yai.replay import check_rate
+
 
 def _mlp(layers, x):
     for i, (W, b) in enumerate(layers):
@@ -19,17 +21,18 @@ def actor_forward(w, s, goal, kind) -> np.ndarray:
     return a
 
 
-def save_actor_npz(path, w, kinds):
+def save_actor_npz(path, w, kinds, control_hz):
     """kinds: the token kinds this actor was trained for (the default learned kinds when it is evaluated or watched)."""
-    d = {"s_mu": w["s_mu"], "s_sd": w["s_sd"], "kinds": np.array(kinds)}
+    d = {"s_mu": w["s_mu"], "s_sd": w["s_sd"], "kinds": np.array(kinds), "control_hz": np.array(control_hz)}
     for name, layers in (("dec", w["dec"]),) + tuple((f"enc{k}", l) for k, l in enumerate(w["enc"])):
         for i, (W, b) in enumerate(layers):
             d[f"{name}_W{i}"], d[f"{name}_b{i}"] = W, b
     np.savez(path, **d)
 
 
-def load_actor_npz(path) -> dict:
+def load_actor_npz(path, control_hz) -> dict:
     z = np.load(path)
+    check_rate(z["control_hz"] if "control_hz" in z.files else None, control_hz, "actor")
 
     def layers(name):
         n = sum(k.startswith(f"{name}_W") for k in z.files)

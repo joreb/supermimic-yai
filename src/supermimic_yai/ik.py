@@ -20,7 +20,7 @@ def rot_error(q_target, q_current) -> np.ndarray:
     return out
 
 
-MAX_POS_STEP, MAX_ROT_STEP = 0.02, 0.1  # per-step error caps keep the linearisation valid on long moves
+MAX_POS_SPEED, MAX_ROT_SPEED, MAX_DQ_SPEED = 1.0, 5.0, 2.5  # m/s, rad/s, rad/s; times the tick, they cap each step (keeps the linearisation valid on long moves)
 
 
 def _cap(v, limit):
@@ -28,15 +28,17 @@ def _cap(v, limit):
     return v if n <= limit else v * limit / n
 
 
-def ik_step(env, target_pose: Pose, damping: float = 1e-2, max_dq: float = 0.05) -> np.ndarray:
+def ik_step(env, target_pose: Pose, damping: float = 1e-2, max_dq: float | None = None) -> np.ndarray:
     """One damped-least-squares step on the 6-D pose error at the end-effector point."""
     m, d, i = env.model, env.data, env.index
+    dt = 1 / env.control_hz
+    max_dq = MAX_DQ_SPEED * dt if max_dq is None else max_dq
     point = ee_point(env)
     jacp, jacr = np.zeros((3, m.nv)), np.zeros((3, m.nv))
     mujoco.mj_jac(m, d, jacp, jacr, point, i.ee_body)
     J = np.vstack([jacp, jacr])[:, env._arm_dof]
-    err = np.concatenate([_cap(np.asarray(target_pose[:3]) - point, MAX_POS_STEP),
-                          _cap(rot_error(target_pose[3:], d.xquat[i.ee_body]), MAX_ROT_STEP)])
+    err = np.concatenate([_cap(np.asarray(target_pose[:3]) - point, MAX_POS_SPEED * dt),
+                          _cap(rot_error(target_pose[3:], d.xquat[i.ee_body]), MAX_ROT_SPEED * dt)])
     dq = J.T @ np.linalg.solve(J @ J.T + damping * np.eye(6), err)
     dq = np.clip(dq, -max_dq, max_dq)
     q = d.qpos[i.arm_qpos_adr] - env.ctx.joint_offsets + dq  # env adds the offsets back onto the command

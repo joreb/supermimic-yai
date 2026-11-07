@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
+from supermimic_yai.env import CONTROL_HZ
 from supermimic_yai import seeds as seedmod
 from supermimic_yai.collect import Collector
 from supermimic_yai.config import load_config
@@ -36,7 +37,7 @@ def check_heldout(products, heldout, bank=None, init_eps=()):
     held = set().union(*map(_names, heldout))
     if bad := sorted(held & set().union(*map(_names, products))):
         raise SystemExit(f"refusing to train: held-out product(s) {bad} appear in --products")
-    if bank and (bad := sorted({s.product for s in load_bank(bank)} & held)):
+    if bank and (bad := sorted({s.product for s in load_bank(bank, CONTROL_HZ)} & held)):
         raise SystemExit(f"refusing to train: --bank has start states of held-out product(s) {bad}")
     if bad := sorted({e["product"] for e in init_eps if "product" in e} & held):
         raise SystemExit(f"refusing to train: the --init episodes contain held-out product(s) {bad}")
@@ -82,7 +83,7 @@ def _run(a):
         if last not in d:
             raise SystemExit(f"unknown config key {k}")
         d[last] = yaml.safe_load(v)
-    eps = load_episodes(Path(a.init) / "episodes.npz")
+    eps = load_episodes(Path(a.init) / "episodes.npz", CONTROL_HZ)
     check_heldout(a.products, a.heldout, a.bank, eps)
     import torch
     from torch.utils.tensorboard import SummaryWriter
@@ -98,7 +99,7 @@ def _run(a):
     buf = ReplayBuffer(cfg["replay"]["capacity"], sd, ad, gd, cd)
     for e in eps:
         buf.add(e)
-    wm = load_wm(Path(a.init) / "model.pt", sd, ad, cd, dev)
+    wm = load_wm(Path(a.init) / "model.pt", sd, ad, cd, dev, control_hz=CONTROL_HZ)
     opt_w = torch.optim.Adam(wm.parameters(), w_cfg["lr"])
     L, rng = Learner(cfg, sd, ad, gd, cd, wm, dev), np.random.default_rng(0)
     L.set_norm(buf)
@@ -129,7 +130,7 @@ def _run(a):
                 m = L.bc_update(buf, rng, kinds)
                 if i % 100 == 0:
                     tw.add_scalar("policy/bc_loss", m["bc_loss"], i)
-            save_actor_npz(out / "actor_bc.npz", L.actor.export(), TOKEN_KINDS)
+            save_actor_npz(out / "actor_bc.npz", L.actor.export(), TOKEN_KINDS, CONTROL_HZ)
         tens = lambda b: {k: torch.as_tensor(v, device=dev, dtype=torch.int64 if k == "kind" else torch.float32)  # noqa: E731
                           for k, v in b.items() if k in ("s", "a", "ctx", "kind", "done")}
         t0, streak, it, aborted = time.perf_counter(), dict.fromkeys(kinds, 0), start, False
@@ -153,7 +154,7 @@ def _run(a):
                     streak[k] = streak[k] + 1 if out_of_bounds(m, p_cfg["horizon"]) else 0
                     if streak[k] >= ABORT_STREAK:  # diverged weights go only to actor_abort.npz; ckpt.pt keeps the last good state
                         aborted = True
-                        save_actor_npz(out / "actor_abort.npz", L.actor.export(), TOKEN_KINDS)
+                        save_actor_npz(out / "actor_abort.npz", L.actor.export(), TOKEN_KINDS, CONTROL_HZ)
                         raise SystemExit(f"ABORT it {it}: imagined reward sum or mean V out of bounds for {ABORT_STREAK} updates "
                                          f"(rsum {m['imagined_reward_sum']:.3g}, V {m['v_mean']:.3g} in {m['v_lo']:.3g}..{m['v_hi']:.3g})")
                     n += 1
@@ -162,7 +163,7 @@ def _run(a):
                 for e in new:
                     buf.add(e)
                 sampler.update(new)
-                save_actor_npz(out / "actor.npz", L.actor.export(), TOKEN_KINDS)
+                save_actor_npz(out / "actor.npz", L.actor.export(), TOKEN_KINDS, CONTROL_HZ)
                 if it % t["log_every"] == 0:
                     steps = sum(len(e["a"]) for e in new)
                     for ki, k in zip(kinds, TOKEN_KINDS):

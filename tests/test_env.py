@@ -131,3 +131,21 @@ def test_action_shape_checked():
 def test_obs_public():
     ENV.reset(seed=1)
     assert set(ENV.obs()) == {"arm_qpos", "arm_qvel", "gripper", "ee_pose", "part_poses", "context"}
+
+
+def test_default_rate_is_10hz():
+    assert AssemblyEnv(ARM, ENV.product).control_hz == 10
+
+
+def test_step_ramps_targets(monkeypatch):
+    env = AssemblyEnv(ARM, ENV.product, control_hz=10)
+    env.reset(options={"context": nominal_context(env.product, 7)})
+    idx, seen, real = env.index.arm_ctrl_idx, [], mujoco.mj_step
+    old = env.data.ctrl[idx].copy()
+    jump = np.append(np.asarray(ARM.home_qpos) + 0.25, 1.0)
+    monkeypatch.setattr(mujoco, "mj_step", lambda m, d, n=1: (seen.append(d.ctrl[idx].copy()), real(m, d, n))[1])
+    env.step(jump)
+    new = env.data.ctrl[idx]
+    assert len(seen) == env.substeps > 1
+    assert np.all((seen[0] > old) & (seen[0] < new))
+    assert np.allclose(seen[-1], new) and np.allclose(new - old, 0.25)

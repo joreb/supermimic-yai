@@ -25,7 +25,7 @@ from supermimic_yai.tokens import resolve_target
 
 TOKEN_KINDS = ("GRASP", "ALIGN", "INSERT")
 FORCE_SCALE = 20.0
-DROP_STEPS = 5  # consecutive steps without a grip before a part counts as dropped
+DROP_TIME = 0.1  # s without a grip before a part counts as dropped
 GRASP_LIFT = 0.015  # same as the scripted grasp's lift check
 _EXTRA = 1 + 8 + 7 + 1
 
@@ -95,7 +95,7 @@ def reward(kind, s, s_next, goal) -> float:
         return float(-(xy + 0.05 * yaw))
     rem = lambda x: _slices(x)[0][2] - _slices(x)[2][2]  # remaining descent  # noqa: E731
     mf = goal[1] * FORCE_SCALE
-    return float((rem(s) - rem(s_next)) / goal[0] - 0.1 * max(0.0, f * mf - mf))
+    return float(np.clip((rem(s) - rem(s_next)) / goal[0], -1, 1) - 0.1 * max(0.0, f * mf - mf))
 
 
 def success(kind, s, goal) -> bool:
@@ -108,22 +108,26 @@ def success(kind, s, goal) -> bool:
     return bool(np.linalg.norm(tgt[:3] - part[:3]) <= goal[2])
 
 
+def drop_steps(env) -> int:
+    return max(1, round(DROP_TIME * env.control_hz))
+
+
 def budget_steps(env, tok) -> int:
     return round(_budget(env, tok) / (env.substeps * env.model.opt.timestep))
 
 
 class TokenEpisode:
-    def __init__(self, env, start, tok, budget_steps, action_scale=0.05, drop_steps=DROP_STEPS):
+    def __init__(self, env, start, tok, budget_steps, action_scale=0.05, drop_n=None):
         self.env, self.start, self.tok, self.budget = env, start, tok, budget_steps
         self.scale, self.n = action_scale, env.n_arm
         self.goal = token_goal(tok, env.product)
         self.lo, self.hi = env.action_space.low[:self.n], env.action_space.high[:self.n]
-        self._live, self.drop_steps = False, drop_steps
+        self._live, self.drop_steps = False, drop_steps(env) if drop_n is None else drop_n
 
     @classmethod
-    def live(cls, env, tok, held, budget_steps, action_scale=0.05, drop_steps=DROP_STEPS):
+    def live(cls, env, tok, held, budget_steps, action_scale=0.05, drop_n=None):
         """Episode from the env's current state: reset() reads obs() instead of restoring a start state."""
-        ep = cls(env, SimpleNamespace(held=held), tok, budget_steps, action_scale, drop_steps)
+        ep = cls(env, SimpleNamespace(held=held), tok, budget_steps, action_scale, drop_n)
         ep._live = True
         return ep
 

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
+from supermimic_yai.env import CONTROL_HZ
 from supermimic_yai.replay import buffer_from, load_episodes, save_episodes
 from supermimic_yai.train import check_heldout
 
@@ -46,14 +47,14 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
     if a.reuse:
-        eps = load_episodes(out / "episodes.npz")
+        eps = load_episodes(out / "episodes.npz", CONTROL_HZ)
         check_heldout(a.products, a.heldout, init_eps=eps)
     else:
         check_heldout(a.products, a.heldout)
         from supermimic_yai.collect import Collector
         with Collector(cfg, a.arm, a.products, a.bank or out / "bank.npz") as c:
             eps = c.collect(a.episodes, None, rng_seed=0)
-        save_episodes(out / "episodes.npz", eps)
+        save_episodes(out / "episodes.npz", eps, CONTROL_HZ)
     t_collect = time.perf_counter() - t0
     print(f"{len(eps)} episodes, {sum(len(e['a']) for e in eps)} transitions, collect/load {t_collect:.0f} s", flush=True)
     fit(cfg, eps, a.iters, out, t_collect)
@@ -64,7 +65,7 @@ def fit(cfg, eps, iters, out, t_collect=0.0):
     from torch.utils.tensorboard import SummaryWriter
 
     from supermimic_yai.task import TOKEN_KINDS
-    from supermimic_yai.wm import WorldModel, rollout, wm_loss
+    from supermimic_yai.wm import WorldModel, rollout, save_wm, wm_loss
     w, k = cfg["wm"], cfg["wm"]["k"]
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print("device", dev, torch.cuda.get_device_name(0) if dev == "cuda" else "", flush=True)
@@ -118,7 +119,7 @@ def fit(cfg, eps, iters, out, t_collect=0.0):
                   + " ".join(f"{kn} {r.get(f'kstep_err/{kn}', float('nan')) * 1e3:.2f}/{r.get(f'kstep_err_pt/{kn}', float('nan')) * 1e3:.2f}mm"
                              for kn in TOKEN_KINDS) + f" acc {r['done_acc']:.3f} auc {r['done_auc']:.3f}", flush=True)
     tw.close()
-    torch.save(model.state_dict(), out / "model.pt")
+    save_wm(out / "model.pt", model, CONTROL_HZ)
     wall = time.perf_counter() - t1
     gpu = torch.cuda.max_memory_allocated() / 2**20 if dev == "cuda" else 0
     print(f"fit wall {wall:.0f} s ({iters / wall:.1f} it/s), gpu peak {gpu:.0f} MB (allocated)")

@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from supermimic_yai.env import CONTROL_HZ
 from supermimic_yai import seeds
 from supermimic_yai.arm import load_arm
 from supermimic_yai.collect import Collector
@@ -33,21 +34,22 @@ def setup(tmp_path_factory):
     arm = load_arm(ARM_DIR)
     product = load_product(Path(A))
     recipe = load_recipe(resolve_recipe(A), product, arm)
-    save_bank(d / "bank.npz", collect_start_states(arm, product, recipe, seeds.TRAIN[:1]))
+    save_bank(d / "bank.npz", collect_start_states(arm, product, recipe, seeds.TRAIN[:1]), CONTROL_HZ)
     cfg = load_config("laptop")
     cfg["collect"]["workers"] = 2
     with Collector(cfg, ARM_DIR, [A], d / "bank.npz") as c:
         eps = c.collect(8, None)
     init = d / "init"
     init.mkdir()
-    save_episodes(init / "episodes.npz", eps)
+    save_episodes(init / "episodes.npz", eps, CONTROL_HZ)
     import torch
     from supermimic_yai.wm import WorldModel
     sd, ad, cd = eps[0]["s"].shape[1], eps[0]["a"].shape[1], eps[0]["ctx"].shape[0]
     m = WorldModel(sd, ad, cd, len(TOKEN_KINDS), 16, 1)
     ok = np.concatenate([e["s"][:-1] for e in eps]), np.concatenate([e["s"][1:] for e in eps])
     m.set_norm(ok[0], ok[1], np.concatenate([np.tile(e["ctx"], (len(e["a"]), 1)) for e in eps]))
-    torch.save(m.state_dict(), init / "model.pt")
+    from supermimic_yai.wm import save_wm
+    save_wm(init / "model.pt", m, CONTROL_HZ)
     return d
 
 
@@ -101,7 +103,7 @@ def test_rejects_heldout_state_in_bank(setup, tmp_path):
     import dataclasses
     from supermimic_yai.startbank import load_bank
     from supermimic_yai.train import main
-    save_bank(tmp_path / "bank.npz", [dataclasses.replace(s, product="product_b") for s in load_bank(setup / "bank.npz")[:2]])
+    save_bank(tmp_path / "bank.npz", [dataclasses.replace(s, product="product_b") for s in load_bank(setup / "bank.npz", CONTROL_HZ)[:2]], CONTROL_HZ)
     a = args(setup, tmp_path, 1)
     a[a.index("--bank") + 1] = str(tmp_path / "bank.npz")
     with pytest.raises(SystemExit, match="--bank"):
@@ -113,12 +115,12 @@ def test_rejects_heldout_product_in_init_episodes(setup, tmp_path):
 
     from supermimic_yai.replay import load_episodes
     from supermimic_yai.train import main
-    eps = load_episodes(setup / "init" / "episodes.npz")
+    eps = load_episodes(setup / "init" / "episodes.npz", CONTROL_HZ)
     for e in eps:
         e["product"] = "product_b"
     init = tmp_path / "init"
     init.mkdir()
-    save_episodes(init / "episodes.npz", eps)
+    save_episodes(init / "episodes.npz", eps, CONTROL_HZ)
     shutil.copy(setup / "init" / "model.pt", init / "model.pt")
     a = args(setup, tmp_path / "log", 1)
     a[a.index("--init") + 1] = str(init)
@@ -147,7 +149,7 @@ def test_trained_actor_stores_kinds(setup, tmp_path):
     from supermimic_yai.npmlp import load_actor_npz
     from supermimic_yai.train import main
     assert main(args(setup, tmp_path, 1, "--set", "train.eval_every=1000")) == 1
-    assert load_actor_npz(tmp_path / "actor.npz")["kinds"] == TOKEN_KINDS
+    assert load_actor_npz(tmp_path / "actor.npz", CONTROL_HZ)["kinds"] == TOKEN_KINDS
 
 
 def test_abort_keeps_last_good_ckpt(setup, tmp_path, monkeypatch):

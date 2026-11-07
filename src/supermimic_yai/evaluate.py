@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
+from supermimic_yai.env import CONTROL_HZ
 from supermimic_yai import seeds as seedmod
 from supermimic_yai.collect import Collector
 from supermimic_yai.npmlp import learned_kinds as _kinds
@@ -14,7 +15,7 @@ def eval_tokens(cfg, arm_dir, pdirs, bank_path, weights, n_per_kind, rng_seed=0,
     """-> {(product, kind): {"success", "n", "terminal"}}. Kinds outside learned_kinds (default: the actor's own) run scripted (weights=None)."""
     learned_kinds = _kinds(weights, learned_kinds)
     names = [assembly_name(d) for d in pdirs]
-    kinds = sorted({s.token for s in load_bank(bank_path) if s.product in names})
+    kinds = sorted({s.token for s in load_bank(bank_path, CONTROL_HZ) if s.product in names})
     out = {}
     for kind in kinds:
         w = weights if kind in learned_kinds else None
