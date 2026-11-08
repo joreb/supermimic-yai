@@ -31,6 +31,7 @@ class AssemblyEnv(gym.Env):
         self._arm_dof = [int(self.model.jnt_dofadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, j)])
                          for j in arm.arm_joints]
         self._ready = False
+        self._hold, self.lost_s, self.lost_max, self._held_seen = None, 0.0, 0.0, False
         self.substeps = round(1 / (control_hz * self.model.opt.timestep))
 
         rng = self.model.jnt_range
@@ -50,6 +51,11 @@ class AssemblyEnv(gym.Env):
         i, a = self.index, self.arm
         self.data.ctrl[i.arm_ctrl_idx] = np.asarray(target) + self.ctx.joint_offsets
         self.data.ctrl[i.gripper_ctrl_idx] = a.gripper_closed_ctrl + grip * (a.gripper_open_ctrl - a.gripper_closed_ctrl)
+
+    def track_hold(self, hold, held=False):
+        """Sample hold() (-> bool) after every substep; lost_s = sim seconds since it last held, counted once it has
+        (lost_max: its peak during the last step)."""
+        self._hold, self.lost_s, self.lost_max, self._held_seen = hold, 0.0, 0.0, held
 
     def obs(self):
         d, i = self.data, self.index
@@ -99,6 +105,7 @@ class AssemblyEnv(gym.Env):
         a = np.asarray(action, dtype=np.float64)
         if a.shape != (self.n_arm + 1,):
             raise ValueError(f"action shape {a.shape}, expected {(self.n_arm + 1,)}")
+        self.lost_max = self.lost_s
         old = self.data.ctrl[self.index.arm_ctrl_idx].copy()
         self._set_ctrl(a[:self.n_arm], float(np.clip(a[self.n_arm], 0.0, 1.0)))
         new = self.data.ctrl[self.index.arm_ctrl_idx].copy()
@@ -107,6 +114,12 @@ class AssemblyEnv(gym.Env):
         for k in range(1, self.substeps + 1):  # ramp the targets so a slow control tick is not a step input
             self.data.ctrl[self.index.arm_ctrl_idx] = old + (new - old) * (k / self.substeps)
             mujoco.mj_step(self.model, self.data)
+            if self._hold is not None:
+                if self._hold():
+                    self.lost_s, self._held_seen = 0.0, True
+                elif self._held_seen:
+                    self.lost_s += self.model.opt.timestep
+                    self.lost_max = max(self.lost_max, self.lost_s)
         d = self.data
         unstable = (any(d.warning[w].number > 0 for w in _WARNS)
                     or not (np.isfinite(d.qacc).all() and np.isfinite(d.qvel).all() and np.isfinite(d.qpos).all()))

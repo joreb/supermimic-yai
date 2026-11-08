@@ -135,7 +135,10 @@ def test_grip_box_recall_and_regression(collector):  # noqa: F811
     assert len(held) > 100
     rec = (grip_box_t(torch.as_tensor(held), grip) >= 0.5).double().mean().item()
     print("held-out recall", rec)
-    assert rec >= 0.98
+    # 0.94, not 0.98: since the drop check needs 100 ms of lost grip (Plan 2c), episodes run on through brief
+    # flickers and keep rare part-slip states (part ~2 mm shifted, still held). A 60-episode fit half without one
+    # misses them: recall over seeds 1-4 and both splits is 0.945-1.000. Training fits on the full replay.
+    assert rec >= 0.94
     s = torch.as_tensor(held[:1]).clone()
     s[0, 2 * n + 1:2 * n + 4] = torch.tensor([0.02, 0.0, 0.0])  # closed gripper, part 2 cm outside the box
     assert grip_box_t(s, grip).item() < 0.05

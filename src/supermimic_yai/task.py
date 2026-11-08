@@ -108,26 +108,22 @@ def success(kind, s, goal) -> bool:
     return bool(np.linalg.norm(tgt[:3] - part[:3]) <= goal[2])
 
 
-def drop_steps(env) -> int:
-    return max(1, round(DROP_TIME * env.control_hz))
-
-
 def budget_steps(env, tok) -> int:
     return round(_budget(env, tok) / (env.substeps * env.model.opt.timestep))
 
 
 class TokenEpisode:
-    def __init__(self, env, start, tok, budget_steps, action_scale=0.05, drop_n=None):
+    def __init__(self, env, start, tok, budget_steps, action_scale=0.05, drop_time=DROP_TIME):
         self.env, self.start, self.tok, self.budget = env, start, tok, budget_steps
         self.scale, self.n = action_scale, env.n_arm
         self.goal = token_goal(tok, env.product)
         self.lo, self.hi = env.action_space.low[:self.n], env.action_space.high[:self.n]
-        self._live, self.drop_steps = False, drop_steps(env) if drop_n is None else drop_n
+        self._live, self.drop_time = False, drop_time
 
     @classmethod
-    def live(cls, env, tok, held, budget_steps, action_scale=0.05, drop_n=None):
+    def live(cls, env, tok, held, budget_steps, action_scale=0.05, drop_time=DROP_TIME):
         """Episode from the env's current state: reset() reads obs() instead of restoring a start state."""
-        ep = cls(env, SimpleNamespace(held=held), tok, budget_steps, action_scale, drop_n)
+        ep = cls(env, SimpleNamespace(held=held), tok, budget_steps, action_scale, drop_time)
         ep._live = True
         return ep
 
@@ -135,10 +131,12 @@ class TokenEpisode:
         return token_state(obs, self.env, self.tok, self.held, self.z0)
 
     def reset(self):
-        self.held, self.t, self.lost, self.ratio = self.start.held, 0, 0, 0.0
+        self.held, self.t, self.ratio = self.start.held, 0, 0.0
         obs = self.env.obs() if self._live else self.env.restore(self.start)
         self.z0 = obs["part_poses"][self.held or self.tok.part][2]
         self.s = self._state(obs)
+        watch = self.tok.kind != "GRASP" and self.drop_time != np.inf
+        self.env.track_hold((lambda: fingers_hold(self.env, self.held)) if watch else None, bool(self.s[2 * self.n + 8]))
         return self.s
 
     def step(self, a):
@@ -148,7 +146,6 @@ class TokenEpisode:
         s2, kind, self.t = self._state(obs), self.tok.kind, self.t + 1
         r = reward(kind, self.s, s2, self.goal)
         flag = s2[2 * self.n + 8]
-        self.lost = self.lost + 1 if flag == 0 and (self.lost or self.s[2 * self.n + 8] == 1) else 0
         if kind == "INSERT":
             self.ratio = max(self.ratio, s2[-1])
         why = None
@@ -156,13 +153,15 @@ class TokenEpisode:
             why = "unstable"
         elif success(kind, s2, self.goal):
             why = "success"
-        elif kind != "GRASP" and self.lost >= self.drop_steps:
+        elif kind != "GRASP" and self.env.lost_max >= self.drop_time - 1e-9:
             why = "dropped"
         elif kind == "INSERT" and s2[-1] > 2:
             why = "force"
         elif self.t >= self.budget:
             why = "timeout"
         self.s = s2
+        if why:
+            self.env.track_hold(None)
         info = {"terminal_kind": why} if why else {}
         if kind == "INSERT":
             info["max_force_ratio"] = self.ratio

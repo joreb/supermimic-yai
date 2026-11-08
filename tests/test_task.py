@@ -140,17 +140,24 @@ def test_align_needs_held_flag(a):
 
 
 def test_dropped_debounced(a, monkeypatch):
-    env, ep, tok, hold = _at(a, "ALIGN")
-    ep.drop_steps = 5  # debounce window as at 50 Hz
-    seq = iter([False, True, False, False, False, False, False])  # flicker, then 5 consecutive
-    monkeypatch.setattr(task, "fingers_hold", lambda e, p: next(seq))
-    kinds = []
-    for _ in range(7):
-        _, _, done, info = ep.step(hold)
-        kinds.append(info.get("terminal_kind"))
-        if done:
-            break
-    assert kinds == [None] * 6 + ["dropped"]
+    """The grip is sampled every substep: a 40 ms flicker is ignored, 100 ms without it is a drop, at any control rate."""
+    for hz in (10, 50):
+        for gap, want in ((0.04, None), (0.12, "dropped")):
+            product, recipe, bank = a
+            env = AssemblyEnv(ARM, product, control_hz=hz)
+            k = next(x for x in bank if x.token == "ALIGN")
+            ep = TokenEpisode(env, k, recipe.steps[k.step], budget_steps=100)
+            ep.reset()
+            t0 = env.data.time + 0.02
+            monkeypatch.setattr(task, "fingers_hold", lambda e, p: not (t0 <= e.data.time < t0 + gap))
+            ep.reset()
+            kinds = []
+            for _ in range(int(0.3 * hz) + 1):
+                _, _, done, info = ep.step(np.append(np.zeros(env.n_arm), 0.0))
+                kinds.append(info.get("terminal_kind"))
+                if done:
+                    break
+            assert ("dropped" in kinds) == (want == "dropped"), (hz, gap, kinds)
 
 
 def test_yaw_numpy_matches_and_normalises(a):
@@ -201,9 +208,3 @@ def test_reward_sanity(a):
     far = near.copy()
     far[2 * n + 1:2 * n + 3] += 0.01
     assert reward("ALIGN", s, near, g) > reward("ALIGN", s, far, g)
-
-
-def test_drop_window_is_time_based():
-    product, _ = _load("product_a")
-    assert task.drop_steps(AssemblyEnv(ARM, product, control_hz=10)) == 1
-    assert task.drop_steps(AssemblyEnv(ARM, product, control_hz=50)) == 5
